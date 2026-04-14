@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web BMS Pattern Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #111;
+            color: white;
+            font-family: 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        #controls {
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #controls input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: #333;
+            border: 1px solid #555;
+            color: white;
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #444;
+        }
+
+        .btn.active {
+            background: #e74c3c;
+            border-color: #c0392b;
+        }
+
+        #info {
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+            min-width: 260px;
+        }
+
+        #title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        #loading-wrap {
+            width: 260px;
+            margin-top: 8px;
+        }
+
+        #loading-label {
+            font-size: 12px;
+            color: #8f9bb3;
+            margin-bottom: 4px;
+        }
+
+        #loading-bar {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        #loading-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #22c55e);
+            transition: width 0.15s ease;
+        }
+
+        #canvas-container {
+            position: relative;
+            margin: 10px 0;
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+            border: 2px solid #333;
+        }
+
+        #score-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: right;
+            min-width: 150px;
+        }
+
+        #score-panel .label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        #score-panel .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        #score-panel .judge {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        #combo-display {
+            font-size: 32px;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+
+        #judgment-display {
+            font-size: 18px;
+            margin-top: 5px;
+        }
+
+        .perfect {
+            color: #9b59b6;
+        }
+
+        .great {
+            color: #2ecc71;
+        }
+
+        .good {
+            color: #3498db;
+        }
+
+        .bad {
+            color: #e67e22;
+        }
+
+        .miss {
+            color: #e74c3c;
+        }
+
+        #footer {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        #start-btn {
+            background: #27ae60;
+        }
+
+        #start-btn:hover {
+            background: #2ecc71;
+        }
+
+        #speed-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #speed-control input {
+            width: 60px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="controls">
+            <label class="btn">
+                📁 폴더 열기
+                <input type="file" id="fileInput" webkitdirectory directory multiple>
+            </label>
+            <select id="chart-select" class="btn"></select>
+            <button class="btn" id="start-btn">▶ 시작</button>
+            <button class="btn" id="restart-btn">⏮ 처음부터</button>
+            <button class="btn" id="stop-btn">⏹ 정지</button>
+            <button class="btn" id="autoplay-btn">AUTO OFF</button>
+            <div id="speed-control">
+                <span>속도:</span>
+                <input type="number" id="speed-input" value="12.0" step="1" min="1" max="16.0">
+                <span>x</span>
+            </div>
+            <div id="info">
+                <div id="title">파일을 선택하세요</div>
+                <div id="file-info"></div>
+                <div id="lane-info"></div>
+                <div id="loading-wrap">
+                    <div id="loading-label">대기 중</div>
+                    <div id="loading-bar">
+                        <div id="loading-fill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="viewer" width="900" height="600"></canvas>
+            <div id="score-panel">
+                <div class="label">SCORE</div>
+                <div class="value" id="score">0</div>
+                <div class="judge">
+                    <div id="combo-display">0</div>
+                    <div id="judgment-display"></div>
+                </div>
+            </div>
+        </div>
+        <div id="footer">Folder load | Keys: LShift S D F Space J K L | Speed: 1 down / 2 up</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("viewer");
+        const ctx = canvas.getContext("2d");
+        const fileInput = document.getElementById("fileInput");
+        const chartSelect = document.getElementById("chart-select");
+        const startButton = document.getElementById("start-btn");
+        const restartButton = document.getElementById("restart-btn");
+        const stopButton = document.getElementById("stop-btn");
+        const autoplayButton = document.getElementById("autoplay-btn");
+        const titleEl = document.getElementById("title");
+        const fileInfoEl = document.getElementById("file-info");
+        const laneInfoEl = document.getElementById("lane-info");
+        const scoreEl = document.getElementById("score");
+        const comboEl = document.getElementById("combo-display");
+        const judgmentEl = document.getElementById("judgment-display");
+        const speedInput = document.getElementById("speed-input");
+        const loadingLabelEl = document.getElementById("loading-label");
+        const loadingFillEl = document.getElementById("loading-fill");
+
+        const HIT_Y = 520;
+        const NOTE_HEIGHT = 20;
+        const SCROLL_PIXELS_PER_MS = 0.06;
+        const HIT_WINDOWS = { perfect: 30, great: 60, good: 100, bad: 150 };
+        const BASE_NOTE_COLORS = ['#ff3b30', '#ffffff', '#2f80ff', '#ffffff', '#ffd400', '#ffffff', '#2f80ff', '#ffffff'];
+        const SP_CHANNEL_ORDER = ['16', '11', '12', '13', '14', '15', '18', '19'];
+        const DP_CHANNEL_ORDER = ['16', '11', '12', '13', '14', '15', '18', '19', '26', '21', '22', '23', '24', '25', '28', '29'];
+        const SP_BINDINGS_WITH_SCRATCH = [
+            { code: 'ShiftLeft', label: 'Shift' },
+            { code: 'KeyS', label: 'S' },
+            { code: 'KeyD', label: 'D' },
+            { code: 'KeyF', label: 'F' },
+            { code: 'Space', label: 'Space' },
+            { code: 'KeyJ', label: 'J' },
+            { code: 'KeyK', label: 'K' },
+            { code: 'KeyL', label: 'L' },
+        ];
+        const SP_BINDINGS_NO_SCRATCH = [
+            { code: 'ShiftLeft', label: 'Shift' },
+            { code: 'KeyS', label: 'S' },
+            { code: 'KeyD', label: 'D' },
+            { code: 'KeyF', label: 'F' },
+            { code: 'Space', label: 'Space' },
+            { code: 'KeyJ', label: 'J' },
+            { code: 'KeyK', label: 'K' },
+            { code: 'KeyL', label: 'L' },
+        ];
+        const DP_BINDINGS = [
+            { code: 'ShiftLeft', label: 'LShift' },
+            { code: 'KeyZ', label: 'Z' },
+            { code: 'KeyS', label: 'S' },
+            { code: 'KeyX', label: 'X' },
+            { code: 'KeyD', label: 'D' },
+            { code: 'KeyC', label: 'C' },
+            { code: 'KeyF', label: 'F' },
+            { code: 'KeyV', label: 'V' },
+            { code: 'KeyM', label: 'M' },
+            { code: 'KeyK', label: 'K' },
+            { code: 'Comma', label: ',' },
+            { code: 'KeyL', label: 'L' },
+            { code: 'Period', label: '.' },
+            { code: 'Semicolon', label: ';' },
+            { code: 'Slash', label: '/' },
+            { code: 'ShiftRight', label: 'RShift' },
+        ];
+        const PMS_BINDINGS = [
+            { code: 'KeyA', label: 'A' },
+            { code: 'KeyS', label: 'S' },
+            { code: 'KeyD', label: 'D' },
+            { code: 'KeyF', label: 'F' },
+            { code: 'Space', label: 'Space' },
+            { code: 'KeyK', label: 'K' },
+            { code: 'KeyL', label: 'L' },
+            { code: 'Semicolon', label: ';' },
+            { code: 'Quote', label: "'" },
+        ];
+        const CHART_EXTENSIONS = new Set(['bms', 'bme', 'bml', 'pms', 'txt']);
+        const AUDIO_EXTENSIONS = new Set(['wav', 'ogg', 'mp3', 'm4a', 'aac', 'flac']);
+        const AUDIO_PREFERRED_EXTENSIONS = ['ogg', 'wav', 'mp3', 'm4a', 'aac', 'flac'];
+        const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mpeg', 'mpg', 'avi', 'wmv']);
+        const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']);
+        const VISUAL_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS]);
+
+        let folderFiles = [];
+        let chartFiles = [];
+        let assetMap = new Map();
+        let objectUrls = [];
+
+        let audioBuffers = new Map();
+        let keySoundBuffers = new Map();
+        let visualAssets = new Map();
+        let activeVideoElements = [];
+        let activePlayers = new Set();
+        let audioPools = new Map();
+        let keySoundContext = null;
+        let offlineAudioContext = null;
+        let hitEffects = [];
+
+        let chartData = null;
+        let laneLayout = buildLaneLayout(new Set(['16', '11', '12', '13', '14', '15', '18', '19']));
+        let notes = [];
+        let bgmEvents = [];
+        let bgaEvents = [];
+        let headerData = { title: '', artist: '', playlevel: '' };
+        let bpm = 130;
+        let currentBpm = 130;
+        let totalMeasures = 0;
+        let isPlaying = false;
+        let animationId = null;
+        let startTime = 0;
+        let currentBga = null;
+        let currentBgaId = null;
+        let bgmIndex = 0;
+        let bgaIndex = 0;
+        let activeHolds = new Map();
+        let keysPressed = new Set();
+        let speed = 12.0;
+
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let judgeCount = { perfect: 0, great: 0, good: 0, bad: 0, miss: 0 };
+        let lastJudge = '';
+        let lastJudgeTime = 0;
+        let audioUnlocked = false;
+        let loadingState = { total: 0, loaded: 0 };
+        let isReadyToStart = false;
+        let autoPlayEnabled = false;
+
+        chartSelect.innerHTML = '<option>차트 없음</option>';
+        chartSelect.disabled = true;
+
+        speedInput.addEventListener('change', () => {
+            speed = clampSpeed(parseFloat(speedInput.value) || 1);
+            speedInput.value = speed.toFixed(1);
+        });
+
+        fileInput.addEventListener('change', handleFolderLoad);
+        chartSelect.addEventListener('change', () => {
+            if (chartSelect.value) loadSelectedChart(chartSelect.value, false);
+        });
+        startButton.addEventListener('click', async () => {
+            await tryUnlockAudio();
+            startGame(false);
+        });
+        restartButton.addEventListener('click', async () => {
+            await tryUnlockAudio();
+            restartGame();
+        });
+        stopButton.addEventListener('click', stopGame);
+        autoplayButton.addEventListener('click', toggleAutoPlay);
+
+        document.addEventListener('keydown', async (event) => {
+            if (event.code === 'Space') event.preventDefault();
+            if (event.repeat) return;
+
+            await tryUnlockAudio();
+            await ensureKeySoundContext();
+
+            if (event.code === 'Enter' && isReadyToStart && !isPlaying) {
+                startGame(false);
+                return;
+            }
+
+            if (event.code === 'Digit1') {
+                adjustSpeed(-1);
+                return;
+            }
+
+            if (event.code === 'Digit2') {
+                adjustSpeed(1);
+                return;
+            }
+
+            if (laneLayout.keyMap[event.code] !== undefined) {
+                keysPressed.add(event.code);
+                if (isPlaying) handleKeyDown(event.code, performance.now());
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            keysPressed.delete(event.code);
+            if (isPlaying && laneLayout.keyMap[event.code] !== undefined) {
+                handleKeyUp(event.code);
+            }
+        });
+
+        async function handleFolderLoad(event) {
+            const files = Array.from(event.target.files || []);
+            if (!files.length) return;
+
+            stopGame();
+            unloadAssets();
+            folderFiles = files;
+            assetMap = buildAssetMap(files);
+            chartFiles = files
+                .filter((file) => CHART_EXTENSIONS.has(getExtension(file.name)))
+                .sort((a, b) => a.name.localeCompare(b.name, 'en'));
+
+            if (!chartFiles.length) {
+                titleEl.textContent = 'BMS 파일이 없습니다';
+                fileInfoEl.textContent = '곡 폴더를 선택하면 차트와 리소스를 함께 읽습니다';
+                chartSelect.innerHTML = '<option>차트 없음</option>';
+                chartSelect.disabled = true;
+                setLoadingProgress(0, 0, '차트 없음');
+                return;
+            }
+
+            chartSelect.innerHTML = chartFiles
+                .map((file) => `<option value="${escapeHtml(file.webkitRelativePath || file.name)}">${escapeHtml(file.name)}</option>`)
+                .join('');
+            chartSelect.disabled = false;
+
+            await tryUnlockAudio();
+            await loadSelectedChart(chartSelect.value, true);
+        }
+
+        async function loadSelectedChart(chartKey, autoStart) {
+            const chartFile = chartFiles.find((file) => (file.webkitRelativePath || file.name) === chartKey) || chartFiles[0];
+            if (!chartFile) return;
+
+            stopGame();
+            resetLoadedMedia();
+            isReadyToStart = false;
+            fileInfoEl.textContent = '차트 파싱 중...';
+            setLoadingProgress(0, 0, '차트 파싱 중');
+
+            const content = await readTextFile(chartFile);
+            chartData = parseBMS(content, chartFile.name);
+            headerData = chartData.headerData;
+            laneLayout = chartData.laneLayout;
+            bpm = chartData.baseBpm;
+            currentBpm = bpm;
+            totalMeasures = chartData.totalMeasures;
+            notes = chartData.notes;
+            bgmEvents = chartData.bgmEvents;
+            bgaEvents = chartData.bgaEvents;
+            titleEl.textContent = headerData.title || chartFile.name;
+            laneInfoEl.textContent = `레인: ${laneLayout.name} | 키: ${laneLayout.labels.join(' ')}`;
+            resetGameState();
+
+            fileInfoEl.textContent = '리소스 로딩 중...';
+            await loadChartResources(chartData);
+            isReadyToStart = true;
+            updateChartInfo('시작 준비 완료, Enter 입력');
+            setLoadingProgress(loadingState.total, loadingState.total, '시작 준비 완료');
+            drawFrame(0);
+        }
+
+        function parseBMS(content, filename) {
+            const lines = content.split(/\r?\n/);
+            const header = { title: filename, artist: '', playlevel: '' };
+            const wavDefs = {};
+            const bmpDefs = {};
+            const bpmDefs = {};
+            const stopDefs = {};
+            const measureLengths = {};
+            const channelData = new Map();
+            let baseBpm = 130;
+            let lnobj = null;
+            let maxMeasure = 0;
+
+            for (const rawLine of lines) {
+                const line = rawLine.trim();
+                if (!line || line.startsWith('//')) continue;
+
+                if (/^#TITLE\s+/i.test(line)) header.title = line.replace(/^#TITLE\s+/i, '').trim().replace(/;/g, '');
+                else if (/^#ARTIST\s+/i.test(line)) header.artist = line.replace(/^#ARTIST\s+/i, '').trim().replace(/;/g, '');
+                else if (/^#PLAYLEVEL\s+/i.test(line)) header.playlevel = line.replace(/^#PLAYLEVEL\s+/i, '').trim().replace(/;/g, '');
+                else if (/^#LNOBJ\s+/i.test(line)) lnobj = line.replace(/^#LNOBJ\s+/i, '').trim().toUpperCase();
+                else if (/^#BPM[0-9A-Z]{2}\s+/i.test(line)) {
+                    const match = line.match(/^#BPM([0-9A-Z]{2})\s+(.+)$/i);
+                    if (match) bpmDefs[match[1].toUpperCase()] = parseFloat(match[2]);
+                }
+                else if (/^#STOP[0-9A-Z]{2}\s+/i.test(line)) {
+                    const match = line.match(/^#STOP([0-9A-Z]{2})\s+(.+)$/i);
+                    if (match) stopDefs[match[1].toUpperCase()] = parseFloat(match[2]);
+                }
+                else if (/^#WAV[0-9A-Z]{2}\s+/i.test(line)) {
+                    const match = line.match(/^#WAV([0-9A-Z]{2})\s+(.+)$/i);
+                    if (match) wavDefs[match[1].toUpperCase()] = match[2].trim().replace(/;/g, '');
+                }
+                else if (/^#BMP[0-9A-Z]{2}\s+/i.test(line)) {
+                    const match = line.match(/^#BMP([0-9A-Z]{2})\s+(.+)$/i);
+                    if (match) bmpDefs[match[1].toUpperCase()] = match[2].trim().replace(/;/g, '');
+                }
+                else if (/^#BPM\s+/i.test(line)) {
+                    baseBpm = parseFloat(line.replace(/^#BPM\s+/i, '').trim()) || 130;
+                }
+                else {
+                    const match = line.match(/^#(\d{3})(\d{2}):(.+)$/);
+                    if (!match) continue;
+
+                    const measure = parseInt(match[1], 10);
+                    const channel = match[2];
+                    const data = match[3].trim().replace(/;/g, '');
+                    maxMeasure = Math.max(maxMeasure, measure);
+
+                    if (channel === '02') {
+                        const length = parseFloat(data);
+                        if (!Number.isNaN(length) && length > 0) measureLengths[measure] = length;
+                        continue;
+                    }
+
+                    if (!channelData.has(measure)) channelData.set(measure, new Map());
+                    channelData.get(measure).set(channel, data);
+                }
+            }
+
+            const visibleChannels = collectVisibleChannels(channelData);
+            const layout = buildLaneLayout(visibleChannels, getExtension(filename) === 'pms');
+            const notes = [];
+            const bgmEvents = [];
+            const bgaEvents = [];
+            const referencedSoundIds = new Set();
+            const referencedBmpIds = new Set();
+            const pendingLnChannels = new Map();
+            const pendingLnObj = new Map();
+            let chartTime = 0;
+            let bpmState = baseBpm;
+
+            for (let measure = 0; measure <= maxMeasure; measure++) {
+                const channels = channelData.get(measure) || new Map();
+                const measureLength = measureLengths[measure] || 1;
+                const measureBeats = 4 * measureLength;
+                const eventBuckets = new Map();
+
+                for (const [channel, data] of channels.entries()) {
+                    if (channel === '02') continue;
+                    const tokens = splitDataPairs(data);
+                    if (!tokens.length) continue;
+
+                    tokens.forEach((token, index) => {
+                        if (token === '00') return;
+                        const position = index / tokens.length;
+                        if (!eventBuckets.has(position)) eventBuckets.set(position, []);
+                        eventBuckets.get(position).push({ channel, token });
+                    });
+                }
+
+                const positions = Array.from(eventBuckets.keys()).sort((a, b) => a - b);
+                let previousPosition = 0;
+
+                for (const position of positions) {
+                    chartTime += beatsToMs((position - previousPosition) * measureBeats, bpmState);
+                    previousPosition = position;
+                    const events = eventBuckets.get(position);
+
+                    for (const event of events) {
+                        const lane = channelToLane(event.channel, layout);
+
+                        if (event.channel === '03') {
+                            const nextBpm = parseInt(event.token, 16);
+                            if (nextBpm > 0) bpmState = nextBpm;
+                            continue;
+                        }
+
+                        if (event.channel === '08') {
+                            const nextBpm = bpmDefs[event.token];
+                            if (nextBpm > 0) bpmState = nextBpm;
+                            continue;
+                        }
+
+                        if (event.channel === '09') {
+                            const stopValue = stopDefs[event.token] || 0;
+                            chartTime += beatsToMs(stopValue / 48, bpmState);
+                            continue;
+                        }
+
+                        if (event.channel === '01') {
+                            bgmEvents.push({ time: chartTime, soundId: event.token });
+                            referencedSoundIds.add(event.token);
+                            continue;
+                        }
+
+                        if (event.channel === '04' || event.channel === '07') {
+                            bgaEvents.push({ time: chartTime, bmpId: event.token });
+                            referencedBmpIds.add(event.token);
+                            continue;
+                        }
+
+                        if (lane === null) continue;
+
+                        if (isLongChannel(event.channel)) {
+                            const pending = pendingLnChannels.get(lane);
+                            if (pending) {
+                                pending.endTime = chartTime;
+                                pending.isLong = true;
+                                pendingLnChannels.delete(lane);
+                            } else {
+                                const note = createNote(lane, chartTime, event.token, true);
+                                notes.push(note);
+                                pendingLnChannels.set(lane, note);
+                                referencedSoundIds.add(event.token);
+                            }
+                            continue;
+                        }
+
+                        if (lnobj && event.token === lnobj) {
+                            const pending = pendingLnObj.get(lane);
+                            if (pending) {
+                                pending.endTime = chartTime;
+                                pending.isLong = true;
+                                pendingLnObj.delete(lane);
+                            }
+                            continue;
+                        }
+
+                        const note = createNote(lane, chartTime, event.token, false);
+                        notes.push(note);
+                        pendingLnObj.set(lane, note);
+                        referencedSoundIds.add(event.token);
+                    }
+                }
+
+                chartTime += beatsToMs((1 - previousPosition) * measureBeats, bpmState);
+            }
+
+            const duration = chartTime;
+            return {
+                headerData: header,
+                laneLayout: layout,
+                baseBpm,
+                totalMeasures: maxMeasure,
+                duration,
+                notes: notes.sort((a, b) => a.time - b.time),
+                bgmEvents,
+                bgaEvents,
+                wavDefs,
+                bmpDefs,
+                referencedSoundIds,
+                referencedBmpIds,
+            };
+        }
+
+        function createNote(lane, time, soundId, isLong) {
+            return {
+                lane,
+                time,
+                soundId,
+                isLong,
+                endTime: null,
+                startProcessed: false,
+                endProcessed: false,
+                judged: false,
+                holding: false,
+                missed: false,
+            };
+        }
+
+        async function loadChartResources(parsed) {
+            const soundDefsToLoad = Array.from(parsed.referencedSoundIds)
+                .map((id) => ({ id, path: parsed.wavDefs[id] }))
+                .filter((entry) => entry.path);
+            const bmpDefsToLoad = Array.from(parsed.referencedBmpIds)
+                .map((id) => ({ id, path: parsed.bmpDefs[id] }))
+                .filter((entry) => entry.path);
+            const totalResources = soundDefsToLoad.length + bmpDefsToLoad.length;
+
+            loadingState = { total: totalResources, loaded: 0 };
+            setLoadingProgress(0, totalResources, totalResources ? '리소스 로딩 중' : '리소스 없음');
+
+            await Promise.all([
+                loadAudioBuffers(soundDefsToLoad, markResourceLoaded),
+                loadVisualAssets(bmpDefsToLoad, markResourceLoaded),
+            ]);
+
+            if (!currentBga) {
+                currentBga = firstMapValue(visualAssets);
+                currentBgaId = currentBga ? '__default__' : null;
+            }
+        }
+
+        async function loadAudioBuffers(entries, onProgress) {
+            const loads = entries.map(async ({ id, path }) => {
+                if (audioBuffers.has(id)) return;
+                const file = resolveAssetFile(path, AUDIO_EXTENSIONS);
+                if (!file) {
+                    onProgress();
+                    return;
+                }
+
+                try {
+                    const audioUrl = createAudioBuffer(file);
+                    audioBuffers.set(id, audioUrl);
+                    const decoded = await decodeKeySoundFile(file);
+                    if (decoded) keySoundBuffers.set(id, decoded);
+                } catch (_) {
+                } finally {
+                    onProgress();
+                }
+            });
+
+            await Promise.all(loads);
+        }
+
+        async function loadVisualAssets(entries, onProgress) {
+            const loads = entries.map(async ({ id, path }) => {
+                if (visualAssets.has(id)) return;
+                const file = resolveAssetFile(path, VISUAL_EXTENSIONS);
+                if (!file) {
+                    onProgress();
+                    return;
+                }
+
+                const extension = getExtension(file.name);
+                if (VIDEO_EXTENSIONS.has(extension)) {
+                    const video = createVideoElement(file);
+                    try {
+                        await waitForMediaEvent(video, 'loadeddata');
+                        visualAssets.set(id, { type: 'video', element: video });
+                        if (!currentBga) {
+                            currentBga = { type: 'video', element: video };
+                            currentBgaId = currentBgaId || '__default__';
+                        }
+                    } catch (_) {
+                    } finally {
+                        onProgress();
+                    }
+                    return;
+                }
+
+                const image = createImageElement(file);
+                try {
+                    await waitForImage(image);
+                    visualAssets.set(id, { type: 'image', element: image });
+                    if (!currentBga) {
+                        currentBga = { type: 'image', element: image };
+                        currentBgaId = currentBgaId || '__default__';
+                    }
+                } catch (_) {
+                } finally {
+                    onProgress();
+                }
+            });
+
+            await Promise.all(loads);
+        }
+
+        async function ensureAudioContext() {
+            return true;
+        }
+
+        async function ensureKeySoundContext() {
+            if (!window.AudioContext && !window.webkitAudioContext) return null;
+            if (!keySoundContext) {
+                const Context = window.AudioContext || window.webkitAudioContext;
+                keySoundContext = new Context();
+            }
+            if (keySoundContext.state === 'suspended') {
+                try { await keySoundContext.resume(); } catch (_) { }
+            }
+            return keySoundContext;
+        }
+
+        async function decodeKeySoundFile(file) {
+            if (!window.OfflineAudioContext && !window.webkitOfflineAudioContext) return null;
+            if (!offlineAudioContext) {
+                const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+                offlineAudioContext = new OfflineContext(1, 44100, 44100);
+            }
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                return await offlineAudioContext.decodeAudioData(arrayBuffer.slice(0));
+            } catch (_) {
+                return null;
+            }
+        }
+
+        async function tryUnlockAudio() {
+            audioUnlocked = true;
+            return true;
+        }
+
+        function resetGameState() {
+            notes.forEach((note) => {
+                note.startProcessed = false;
+                note.endProcessed = false;
+                note.judged = false;
+                note.holding = false;
+                note.missed = false;
+                note.soundPlayed = false;
+                note.tailJudged = false;
+            });
+
+            bgmIndex = 0;
+            bgaIndex = 0;
+            currentBga = null;
+            currentBgaId = null;
+            hitEffects = [];
+            activeHolds.clear();
+            resetScore();
+        }
+
+        function resetScore() {
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            judgeCount = { perfect: 0, great: 0, good: 0, bad: 0, miss: 0 };
+            lastJudge = '';
+            lastJudgeTime = 0;
+            updateScoreDisplay();
+        }
+
+        function updateScoreDisplay() {
+            scoreEl.textContent = Math.floor(score).toLocaleString();
+            comboEl.textContent = combo;
+            judgmentEl.innerHTML = '';
+        }
+
+        async function startGame(fromAutoStart) {
+            if (!chartData || !notes.length) return;
+
+            stopGame();
+            resetGameState();
+            await tryUnlockAudio();
+            isReadyToStart = false;
+
+            isPlaying = true;
+            startTime = performance.now();
+            currentBpm = bpm;
+            startButton.classList.add('active');
+
+            const activeVisuals = Array.from(visualAssets.values()).filter((asset) => asset.type === 'video');
+            activeVisuals.forEach((asset) => {
+                asset.element.currentTime = 0;
+                asset.element.pause();
+                asset.element.muted = false;
+                asset.element.volume = 1;
+            });
+
+            fileInfoEl.textContent = autoPlayEnabled ? 'AUTO PLAY 중' : '재생 중';
+            drawFrame(0);
+        }
+
+        async function restartGame() {
+            if (!chartData || !notes.length) return;
+            stopGame();
+            resetGameState();
+            isReadyToStart = true;
+            updateChartInfo('처음 위치 준비 완료, Enter 입력');
+            drawFrame(0);
+        }
+
+        function toggleAutoPlay() {
+            autoPlayEnabled = !autoPlayEnabled;
+            autoplayButton.textContent = autoPlayEnabled ? 'AUTO ON' : 'AUTO OFF';
+            autoplayButton.classList.toggle('active', autoPlayEnabled);
+
+            if (!isPlaying && chartData && notes.length) {
+                updateChartInfo(autoPlayEnabled ? 'AUTO PLAY 준비 완료, Enter 입력' : '시작 준비 완료, Enter 입력');
+            }
+        }
+
+        function stopGame() {
+            isPlaying = false;
+            startButton.classList.remove('active');
+            if (chartData && notes.length) {
+                isReadyToStart = true;
+            }
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            activeHolds.clear();
+            activeVideoElements.forEach((video) => {
+                video.pause();
+                video.currentTime = 0;
+            });
+            activePlayers.forEach((player) => {
+                try {
+                    player.pause();
+                    player.currentTime = 0;
+                } catch (_) {
+                }
+            });
+            activePlayers.clear();
+        }
+
+        function drawFrame() {
+            const currentTime = isPlaying ? performance.now() - startTime : 0;
+            if (isPlaying) {
+                processTimedEvents(currentTime);
+                processAutoPlay(currentTime);
+                processMisses(currentTime);
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground(currentTime);
+            drawLanes();
+            drawNotes(currentTime);
+            drawHitEffects(currentTime);
+            drawUi(currentTime);
+            updateScoreDisplay();
+
+            if (isPlaying) {
+                animationId = requestAnimationFrame(drawFrame);
+            }
+        }
+
+        function processTimedEvents(currentTime) {
+            const lookAhead = 20;
+
+            while (bgmIndex < bgmEvents.length && bgmEvents[bgmIndex].time <= currentTime + lookAhead) {
+                playSound(bgmEvents[bgmIndex].soundId, true);
+                bgmIndex += 1;
+            }
+
+            while (bgaIndex < bgaEvents.length && bgaEvents[bgaIndex].time <= currentTime + lookAhead) {
+                activateBga(bgaEvents[bgaIndex].bmpId);
+                bgaIndex += 1;
+            }
+        }
+
+        function processAutoPlay(currentTime) {
+            if (!autoPlayEnabled) return;
+
+            for (const note of notes) {
+                if (!note.startProcessed && currentTime >= note.time) {
+                    autoHitNote(note);
+                    continue;
+                }
+
+                if (note.holding && note.endTime !== null && currentTime >= note.endTime) {
+                    completeHold(note);
+                }
+            }
+        }
+
+        function processMisses(currentTime) {
+            if (autoPlayEnabled) return;
+
+            for (const note of notes) {
+                if (!note.startProcessed && currentTime > note.time + HIT_WINDOWS.bad) {
+                    missNote(note);
+                    continue;
+                }
+
+                if (note.holding && note.endTime !== null) {
+                    if (currentTime >= note.endTime) {
+                        completeHold(note);
+                    } else if (currentTime > note.endTime + HIT_WINDOWS.bad) {
+                        failHold(note);
+                    }
+                }
+            }
+        }
+
+        function handleKeyDown(code, inputNow = performance.now()) {
+            if (autoPlayEnabled) return;
+
+            const lane = laneLayout.keyMap[code];
+            const currentTime = inputNow - startTime;
+            const note = findHittableNote(lane, currentTime);
+            if (!note) {
+                playPreviewSound(lane, currentTime);
+                return;
+            }
+
+            const judge = judgeByDiff(Math.abs(note.time - currentTime));
+            if (!judge) {
+                playPreviewSound(lane, currentTime);
+                return;
+            }
+
+            note.startProcessed = true;
+            note.judged = true;
+
+            if (note.endTime !== null) {
+                note.holding = true;
+                activeHolds.set(lane, note);
+            } else {
+                note.judged = true;
+                note.endProcessed = true;
+                note.tailJudged = true;
+            }
+
+            playSound(note.soundId, false);
+            applyJudge(judge, lane);
+        }
+
+        function handleKeyUp(code) {
+            if (autoPlayEnabled) return;
+
+            const lane = laneLayout.keyMap[code];
+            const note = activeHolds.get(lane);
+            if (!note) return;
+
+            const currentTime = performance.now() - startTime;
+            if (currentTime < note.endTime - HIT_WINDOWS.bad) {
+                failHold(note);
+                return;
+            }
+
+            completeHold(note);
+        }
+
+        function completeHold(note) {
+            note.holding = false;
+            note.judged = true;
+            note.endProcessed = true;
+            note.tailJudged = true;
+            activeHolds.delete(note.lane);
+        }
+
+        function autoHitNote(note) {
+            note.startProcessed = true;
+            note.judged = true;
+
+            if (note.endTime !== null) {
+                note.holding = true;
+                activeHolds.set(note.lane, note);
+            } else {
+                note.endProcessed = true;
+                note.tailJudged = true;
+            }
+
+            playSound(note.soundId, false);
+            applyJudge('perfect', note.lane);
+        }
+
+        function failHold(note) {
+            note.holding = false;
+            note.endProcessed = true;
+            note.judged = true;
+            note.tailJudged = true;
+            activeHolds.delete(note.lane);
+            combo = 0;
+            judgeCount.miss += 1;
+            lastJudge = 'miss';
+            lastJudgeTime = Date.now();
+        }
+
+        function missNote(note) {
+            note.startProcessed = true;
+            note.endProcessed = true;
+            note.judged = true;
+            note.missed = true;
+            note.tailJudged = true;
+            combo = 0;
+            judgeCount.miss += 1;
+            lastJudge = 'miss';
+            lastJudgeTime = Date.now();
+        }
+
+        function applyJudge(judge, lane, countCombo = true) {
+            const points = { perfect: 300, great: 200, good: 100, bad: 50 }[judge] || 0;
+            if (countCombo) combo += 1;
+            maxCombo = Math.max(maxCombo, combo);
+            score += points * (1 + combo * 0.01);
+            judgeCount[judge] += 1;
+            lastJudge = judge;
+            lastJudgeTime = Date.now();
+            drawHitEffect(lane, judge);
+        }
+
+        function findHittableNote(lane, currentTime) {
+            let best = null;
+            let bestDiff = Infinity;
+
+            for (const note of notes) {
+                if (note.lane !== lane || note.startProcessed) continue;
+                const diff = Math.abs(note.time - currentTime);
+                if (diff <= HIT_WINDOWS.bad && diff < bestDiff) {
+                    best = note;
+                    bestDiff = diff;
+                }
+            }
+
+            return best;
+        }
+
+        function playPreviewSound(lane, currentTime) {
+            const note = findNextLaneNote(lane, currentTime);
+            if (note) playSound(note.soundId, false);
+        }
+
+        function findNextLaneNote(lane, currentTime) {
+            for (const note of notes) {
+                if (note.lane !== lane || note.startProcessed) continue;
+                if (note.time >= currentTime - HIT_WINDOWS.bad) return note;
+            }
+            return null;
+        }
+
+        function judgeByDiff(diff) {
+            if (diff <= HIT_WINDOWS.perfect) return 'perfect';
+            if (diff <= HIT_WINDOWS.great) return 'great';
+            if (diff <= HIT_WINDOWS.good) return 'good';
+            if (diff <= HIT_WINDOWS.bad) return 'bad';
+            return null;
+        }
+
+        function playSound(soundId, background = false) {
+            if (!audioUnlocked) return;
+
+            if (!background) {
+                if (playKeySound(soundId)) return;
+            }
+
+            const audioUrl = audioBuffers.get(soundId);
+            if (!audioUrl) return;
+
+            const player = getPooledAudio(soundId, audioUrl);
+            player.currentTime = 0;
+            player.volume = background ? 0.8 : 0.9;
+            activePlayers.add(player);
+            player.play().catch(() => { });
+            player.addEventListener('ended', () => {
+                activePlayers.delete(player);
+            }, { once: true });
+        }
+
+        function playKeySound(soundId) {
+            const buffer = keySoundBuffers.get(soundId);
+            if (!buffer || !keySoundContext || keySoundContext.state !== 'running') return false;
+
+            const source = keySoundContext.createBufferSource();
+            const gain = keySoundContext.createGain();
+            source.buffer = buffer;
+            gain.gain.value = 0.95;
+            source.connect(gain);
+            gain.connect(keySoundContext.destination);
+            source.start(0);
+            return true;
+        }
+
+        function activateBga(bmpId) {
+            if (currentBgaId === bmpId) return;
+            currentBgaId = bmpId;
+
+            if (currentBga && currentBga.type === 'video') {
+                currentBga.element.pause();
+            }
+
+            currentBga = visualAssets.get(bmpId) || null;
+            if (currentBga && currentBga.type === 'video') {
+                currentBga.element.currentTime = 0;
+                currentBga.element.muted = false;
+                currentBga.element.volume = 1;
+                currentBga.element.play().catch(() => { });
+            }
+        }
+
+        function drawBackground(currentTime) {
+            if (currentBga) {
+                if (currentBga.type === 'video' && currentBga.element.readyState >= 2) {
+                    ctx.globalAlpha = 0.45;
+                    ctx.drawImage(currentBga.element, 0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 1;
+                } else if (currentBga.type === 'image') {
+                    ctx.globalAlpha = 0.45;
+                    ctx.drawImage(currentBga.element, 0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 1;
+                }
+            } else {
+                const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                gradient.addColorStop(0, '#0a0a0a');
+                gradient.addColorStop(0.5, '#1a1a2e');
+                gradient.addColorStop(1, '#0f0f1a');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const time = currentTime / 1000;
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.sin(i * 0.5 + time * 0.2) + 1) / 2 * canvas.width;
+                const y = (Math.cos(i * 0.3 + time * 0.1) + 1) / 2 * canvas.height;
+                const alpha = 0.3 + Math.sin(time + i) * 0.2;
+                ctx.fillStyle = `rgba(255,255,255,${alpha * 0.08})`;
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawLanes() {
+            for (let lane = 0; lane < laneLayout.lanes.length; lane++) {
+                const x = getLaneX(lane);
+                const laneWidth = getLaneWidth();
+                const pressed = keysPressed.has(laneToCode(lane));
+
+                ctx.fillStyle = lane % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)';
+                ctx.fillRect(x, 0, laneWidth, canvas.height);
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                ctx.strokeRect(x, 0, laneWidth, canvas.height);
+
+                ctx.fillStyle = pressed ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
+                ctx.fillRect(x, HIT_Y, laneWidth, 60);
+
+                ctx.strokeStyle = pressed ? '#ffffff' : 'rgba(255,255,255,0.45)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, HIT_Y, laneWidth, 60);
+
+                ctx.fillStyle = pressed ? '#fff' : '#aaa';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(laneLayout.labels[lane], x + laneWidth / 2, HIT_Y + 35);
+            }
+
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(getLaneStartX() - 10, HIT_Y);
+            ctx.lineTo(getLaneStartX() + getLaneTotalWidth() + 10, HIT_Y);
+            ctx.stroke();
+        }
+
+        function drawNotes(currentTime) {
+            for (const note of notes) {
+                if (note.endProcessed) continue;
+
+                const laneWidth = getLaneWidth();
+                const x = getLaneX(note.lane) + 5;
+                const width = laneWidth - 10;
+                const y = HIT_Y - (note.time - currentTime) * speed * SCROLL_PIXELS_PER_MS;
+
+                if (note.endTime !== null) {
+                    const endY = HIT_Y - (note.endTime - currentTime) * speed * SCROLL_PIXELS_PER_MS;
+                    const top = Math.min(y, endY) - NOTE_HEIGHT / 2;
+                    const bottom = Math.max(y, endY) + NOTE_HEIGHT / 2;
+                    if (bottom < -100 || top > canvas.height + 100) continue;
+
+                    ctx.fillStyle = `${getLaneColor(note.lane)}99`;
+                    ctx.fillRect(x + width * 0.25, top, width * 0.5, bottom - top);
+
+                    ctx.fillStyle = getLaneColor(note.lane);
+                    ctx.shadowColor = getLaneColor(note.lane);
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(x, endY - NOTE_HEIGHT / 2, width, NOTE_HEIGHT);
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, endY - NOTE_HEIGHT / 2, width, NOTE_HEIGHT);
+                } else if (y < -60 || y > canvas.height + 60) {
+                    continue;
+                }
+
+                ctx.fillStyle = getLaneColor(note.lane);
+                ctx.shadowColor = getLaneColor(note.lane);
+                ctx.shadowBlur = 10;
+                ctx.fillRect(x, y - NOTE_HEIGHT / 2, width, NOTE_HEIGHT);
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y - NOTE_HEIGHT / 2, width, NOTE_HEIGHT);
+            }
+        }
+
+        function drawUi(currentTime) {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(10, 10, 260, 145);
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`BPM: ${Math.round(bpm)}`, 20, 35);
+            ctx.fillText(`Speed: ${speed.toFixed(1)}x`, 20, 60);
+
+            ctx.fillStyle = '#888';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(laneLayout.labels.join(' '), 20, 85);
+            ctx.fillText(`Layout: ${laneLayout.name}`, 20, 119);
+            ctx.fillText(`Notes: ${notes.length}  Max Combo: ${maxCombo}`, 20, 102);
+            ctx.fillText(`Auto: ${autoPlayEnabled ? 'ON' : 'OFF'}`, 20, 136);
+
+            if (isPlaying) {
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText(`Time: ${(currentTime / 1000).toFixed(1)}s`, canvas.width - 20, 30);
+            }
+
+            drawCenterJudge();
+        }
+
+        function drawHitEffect(lane, judge) {
+            const particles = Array.from({ length: 14 }, (_, index) => {
+                const angle = (Math.PI * 2 * index) / 14 + Math.random() * 0.25;
+                return {
+                    angle,
+                    speed: 18 + Math.random() * 34,
+                    size: 2 + Math.random() * 4,
+                    twinkle: 0.6 + Math.random() * 1.8,
+                    drift: (Math.random() - 0.5) * 8,
+                };
+            });
+
+            hitEffects.push({
+                lane,
+                judge,
+                time: performance.now() - startTime,
+                particles,
+            });
+        }
+
+        function drawHitEffects(currentTime) {
+            const colors = { perfect: '#9b59b6', great: '#2ecc71', good: '#3498db', bad: '#e67e22', miss: '#e74c3c' };
+            hitEffects = hitEffects.filter((effect) => currentTime - effect.time < 320);
+
+            hitEffects.forEach((effect) => {
+                const age = currentTime - effect.time;
+                const progress = age / 320;
+                const alpha = 1 - progress;
+                const x = getLaneX(effect.lane) + getLaneWidth() / 2;
+                const y = HIT_Y + 10;
+
+                ctx.save();
+                effect.particles.forEach((particle, index) => {
+                    const distance = particle.speed * progress;
+                    const px = x + Math.cos(particle.angle) * distance + particle.drift * progress;
+                    const py = y + Math.sin(particle.angle) * distance - progress * 18;
+                    const twinkle = 0.55 + 0.45 * Math.sin(progress * 18 + particle.twinkle + index);
+                    const size = particle.size * (1 - progress * 0.55) * twinkle;
+
+                    ctx.globalAlpha = alpha * twinkle;
+                    ctx.fillStyle = colors[effect.judge] || '#fff';
+                    ctx.beginPath();
+                    ctx.arc(px, py, Math.max(0.8, size), 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(px - size * 1.8, py);
+                    ctx.lineTo(px + size * 1.8, py);
+                    ctx.moveTo(px, py - size * 1.8);
+                    ctx.lineTo(px, py + size * 1.8);
+                    ctx.stroke();
+                });
+
+                ctx.globalAlpha = alpha * 0.8;
+                const burst = ctx.createRadialGradient(x, y, 0, x, y, 34 + progress * 18);
+                burst.addColorStop(0, colors[effect.judge] || '#fff');
+                burst.addColorStop(1, 'transparent');
+                ctx.fillStyle = burst;
+                ctx.beginPath();
+                ctx.arc(x, y, 34 + progress * 18, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        function drawCenterJudge() {
+            if (!lastJudge || Date.now() - lastJudgeTime >= 600) return;
+
+            const age = Date.now() - lastJudgeTime;
+            const progress = age / 600;
+            const flash = progress < 0.18 ? 1.25 - progress * 1.4 : 1;
+            const alpha = 1 - progress * 0.15;
+            const judgeScale = 1 + (1 - progress) * 0.18;
+            const comboScale = 1 + (1 - progress) * 0.12;
+            const centerX = getLaneStartX() + getLaneTotalWidth() / 2;
+            const judgeY = HIT_Y - 28;
+            const comboY = HIT_Y - 56;
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.globalAlpha = alpha * flash;
+            ctx.font = `bold ${Math.round(28 * judgeScale)}px sans-serif`;
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+            ctx.strokeText(lastJudge.toUpperCase(), centerX, judgeY);
+            ctx.fillStyle = ({ perfect: '#c084fc', great: '#4ade80', good: '#60a5fa', bad: '#fb923c', miss: '#f87171' })[lastJudge] || '#fff';
+            ctx.fillText(lastJudge.toUpperCase(), centerX, judgeY);
+
+            if (combo > 0 && lastJudge !== 'miss') {
+                ctx.globalAlpha = alpha * flash;
+                ctx.font = `bold ${Math.round(24 * comboScale)}px sans-serif`;
+                ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                ctx.strokeText(`${combo} COMBO`, centerX, comboY);
+                ctx.fillStyle = '#facc15';
+                ctx.fillText(`${combo} COMBO`, centerX, comboY);
+            }
+            ctx.restore();
+        }
+
+        function updateChartInfo(status) {
+            fileInfoEl.textContent = `노트: ${notes.length}개 | BPM: ${Math.round(bpm)} | ${laneLayout.name} | ${status}`;
+        }
+
+        function markResourceLoaded() {
+            loadingState.loaded += 1;
+            const complete = loadingState.loaded >= loadingState.total;
+            setLoadingProgress(loadingState.loaded, loadingState.total, complete ? '시작 준비 완료' : '리소스 로딩 중');
+        }
+
+        function setLoadingProgress(loaded, total, label) {
+            const ratio = total > 0 ? Math.min(1, loaded / total) : 0;
+            loadingLabelEl.textContent = total > 0 ? `${label} (${loaded}/${total})` : label;
+            loadingFillEl.style.width = `${Math.round(ratio * 100)}%`;
+        }
+
+        function unloadAssets() {
+            resetLoadedMedia();
+            audioBuffers.clear();
+            visualAssets.clear();
+            objectUrls.forEach((url) => URL.revokeObjectURL(url));
+            objectUrls = [];
+        }
+
+        function resetLoadedMedia() {
+            activeVideoElements.forEach((video) => video.pause());
+            activePlayers.forEach((player) => {
+                try {
+                    player.pause();
+                    player.currentTime = 0;
+                } catch (_) {
+                }
+            });
+            audioPools.forEach((pool) => {
+                pool.forEach((audio) => {
+                    try {
+                        audio.pause();
+                        audio.currentTime = 0;
+                        audio.src = '';
+                    } catch (_) {
+                    }
+                });
+            });
+            activeVideoElements = [];
+            activePlayers.clear();
+            audioPools.clear();
+            currentBga = null;
+            currentBgaId = null;
+            audioBuffers.clear();
+            keySoundBuffers.clear();
+            visualAssets.clear();
+            objectUrls.forEach((url) => URL.revokeObjectURL(url));
+            objectUrls = [];
+        }
+
+        function buildAssetMap(files) {
+            const map = new Map();
+            for (const file of files) {
+                const relative = normalizePath(file.webkitRelativePath || file.name);
+                const base = normalizePath(getBaseName(file.name));
+                map.set(relative, file);
+                map.set(base, file);
+            }
+            return map;
+        }
+
+        function resolveAssetFile(path, allowedExtensions) {
+            const normalized = normalizePath(path);
+            const direct = assetMap.get(normalized) || assetMap.get(normalizePath(getBaseName(path)));
+            if (direct && allowedExtensions.has(getExtension(direct.name))) return direct;
+
+            if (allowedExtensions === AUDIO_EXTENSIONS) {
+                const baseName = removeExtension(getBaseName(path));
+
+                for (const extension of AUDIO_PREFERRED_EXTENSIONS) {
+                    const candidate = assetMap.get(normalizePath(`${baseName}.${extension}`));
+                    if (candidate && allowedExtensions.has(getExtension(candidate.name))) {
+                        return candidate;
+                    }
+                }
+
+                for (const file of assetMap.values()) {
+                    if (!allowedExtensions.has(getExtension(file.name))) continue;
+                    if (removeExtension(getBaseName(file.name)) !== normalizePath(baseName)) continue;
+
+                    const priority = AUDIO_PREFERRED_EXTENSIONS.indexOf(getExtension(file.name));
+                    if (priority === 0) return file;
+                }
+            }
+
+            for (const file of assetMap.values()) {
+                if (allowedExtensions.has(getExtension(file.name)) && normalizePath(getBaseName(file.name)) === normalizePath(getBaseName(path))) {
+                    return file;
+                }
+            }
+
+            return null;
+        }
+
+        function createVideoElement(file) {
+            const url = URL.createObjectURL(file);
+            objectUrls.push(url);
+            const video = document.createElement('video');
+            video.src = url;
+            video.preload = 'auto';
+            video.playsInline = true;
+            video.loop = false;
+            activeVideoElements.push(video);
+            return video;
+        }
+
+        function createAudioBuffer(file) {
+            const url = URL.createObjectURL(file);
+            objectUrls.push(url);
+            return url;
+        }
+
+        function getPooledAudio(soundId, audioUrl) {
+            if (!audioPools.has(soundId)) {
+                const audio = createPooledAudio(audioUrl);
+                audioPools.set(soundId, [audio]);
+                return audio;
+            }
+
+            const pool = audioPools.get(soundId);
+            const reusable = pool.find((audio) => audio.paused || audio.ended);
+            if (reusable) {
+                return reusable;
+            }
+
+            if (pool.length >= 6) {
+                return pool[0];
+            }
+
+            const clone = createPooledAudio(audioUrl);
+            pool.push(clone);
+            return clone;
+        }
+
+        function createPooledAudio(audioUrl) {
+            const audio = new Audio(audioUrl);
+            audio.preload = 'none';
+            return audio;
+        }
+
+        function createImageElement(file) {
+            const url = URL.createObjectURL(file);
+            objectUrls.push(url);
+            const image = new Image();
+            image.src = url;
+            return image;
+        }
+
+        function waitForMediaEvent(media, eventName) {
+            return new Promise((resolve, reject) => {
+                const onReady = () => {
+                    cleanup();
+                    resolve();
+                };
+                const onError = () => {
+                    cleanup();
+                    reject(new Error('failed to load media'));
+                };
+                const cleanup = () => {
+                    media.removeEventListener(eventName, onReady);
+                    media.removeEventListener('error', onError);
+                };
+                media.addEventListener(eventName, onReady, { once: true });
+                media.addEventListener('error', onError, { once: true });
+                media.load?.();
+            });
+        }
+
+        function waitForImage(image) {
+            return new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = reject;
+            });
+        }
+
+        function readTextFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsText(file);
+            });
+        }
+
+        function channelToLane(channel, layout = laneLayout) {
+            const visibleChannel = normalizeVisibleChannel(channel);
+            if (!visibleChannel) return null;
+            return layout.channelToLane[visibleChannel] ?? null;
+        }
+
+        function isLongChannel(channel) {
+            const numeric = parseInt(channel, 10);
+            return (numeric >= 51 && numeric <= 59) || (numeric >= 61 && numeric <= 69);
+        }
+
+        function normalizeVisibleChannel(channel) {
+            const numeric = parseInt(channel, 10);
+            if (numeric >= 51 && numeric <= 59) return String(numeric - 40).padStart(2, '0');
+            if (numeric >= 61 && numeric <= 69) return String(numeric - 40).padStart(2, '0');
+            if ((numeric >= 11 && numeric <= 19) || (numeric >= 21 && numeric <= 29)) {
+                return String(numeric).padStart(2, '0');
+            }
+            return null;
+        }
+
+        function collectVisibleChannels(channelData) {
+            const visibleChannels = new Set();
+
+            for (const channels of channelData.values()) {
+                for (const channel of channels.keys()) {
+                    const visibleChannel = normalizeVisibleChannel(channel);
+                    if (visibleChannel) visibleChannels.add(visibleChannel);
+                }
+            }
+
+            return visibleChannels;
+        }
+
+        function buildLaneLayout(visibleChannels, isPmsChart = false) {
+            const hasDp = Array.from(visibleChannels).some((channel) => channel.startsWith('2'));
+            const preferredOrder = hasDp ? DP_CHANNEL_ORDER : SP_CHANNEL_ORDER;
+            const orderedChannels = preferredOrder.filter((channel) => visibleChannels.has(channel));
+            const extras = Array.from(visibleChannels)
+                .filter((channel) => !orderedChannels.includes(channel))
+                .sort((a, b) => Number(a) - Number(b));
+            const lanes = [...orderedChannels, ...extras];
+            const bindings = isPmsChart && !hasDp
+                ? PMS_BINDINGS
+                : hasDp
+                    ? DP_BINDINGS
+                    : (lanes.includes('16') ? SP_BINDINGS_WITH_SCRATCH : SP_BINDINGS_NO_SCRATCH);
+
+            const keyMap = {};
+            const labels = [];
+            const codes = [];
+            const colors = [];
+            const channelToLane = {};
+
+            lanes.forEach((channel, lane) => {
+                const binding = bindings[lane] || { code: `Digit${(lane % 9) + 1}`, label: `${lane + 1}` };
+                keyMap[binding.code] = lane;
+                labels.push(binding.label);
+                codes.push(binding.code);
+                colors.push(BASE_NOTE_COLORS[getColorIndexForChannel(channel)]);
+                channelToLane[channel] = lane;
+            });
+
+            return {
+                name: describeLayout(lanes, hasDp, isPmsChart),
+                hasDp,
+                lanes,
+                labels,
+                codes,
+                colors,
+                keyMap,
+                channelToLane,
+                splitIndex: hasDp ? lanes.filter((channel) => channel.startsWith('1')).length : 0,
+            };
+        }
+
+        function getColorIndexForChannel(channel) {
+            const normalized = normalizeVisibleChannel(channel) || channel;
+            const onePlayerOrder = ['16', '11', '12', '13', '14', '15', '18', '19'];
+            const index = onePlayerOrder.indexOf(normalized.startsWith('2') ? String(Number(normalized) - 10).padStart(2, '0') : normalized);
+            return index >= 0 ? index : 0;
+        }
+
+        function describeLayout(lanes, hasDp, isPmsChart = false) {
+            const scratchCount = lanes.filter((channel) => channel === '16' || channel === '26').length;
+            const keyCount = lanes.length - scratchCount;
+            if (isPmsChart) return `PMS ${keyCount}K`;
+            if (hasDp) return scratchCount ? `DP ${scratchCount}+${keyCount}` : `DP ${keyCount}K`;
+            if (scratchCount) return `${scratchCount}+${keyCount}`;
+            return `${keyCount}K`;
+        }
+
+        function splitDataPairs(data) {
+            const cleaned = data.trim();
+            const result = [];
+            for (let i = 0; i < cleaned.length; i += 2) {
+                result.push(cleaned.slice(i, i + 2).toUpperCase());
+            }
+            return result.filter((token) => token.length === 2);
+        }
+
+        function beatsToMs(beats, bpmValue) {
+            return beats * 60000 / bpmValue;
+        }
+
+        function laneToCode(lane) {
+            return laneLayout.codes[lane];
+        }
+
+        function getLaneWidth() {
+            const gap = laneLayout.splitIndex ? 20 : 0;
+            const available = canvas.width - 240 - gap;
+            return Math.max(28, Math.min(56, Math.floor(available / laneLayout.lanes.length)));
+        }
+
+        function getLaneStartX() {
+            return Math.floor((canvas.width - getLaneTotalWidth()) / 2);
+        }
+
+        function getLaneGapAfter(lane) {
+            return laneLayout.splitIndex && lane === laneLayout.splitIndex - 1 ? 20 : 0;
+        }
+
+        function getLaneTotalWidth() {
+            const laneWidth = getLaneWidth();
+            return laneLayout.lanes.length * laneWidth + (laneLayout.splitIndex ? 20 : 0);
+        }
+
+        function getLaneX(lane) {
+            let x = getLaneStartX();
+            const laneWidth = getLaneWidth();
+            for (let i = 0; i < lane; i++) {
+                x += laneWidth + getLaneGapAfter(i);
+            }
+            return x;
+        }
+
+        function getLaneColor(lane) {
+            return laneLayout.colors[lane] || BASE_NOTE_COLORS[lane % BASE_NOTE_COLORS.length];
+        }
+
+        function adjustSpeed(delta) {
+            speed = clampSpeed(speed + delta);
+            speedInput.value = speed.toFixed(1);
+        }
+
+        function clampSpeed(value) {
+            return Math.min(16, Math.max(0.1, Math.round(value * 10) / 10));
+        }
+
+        function getExtension(name) {
+            const index = name.lastIndexOf('.');
+            return index >= 0 ? name.slice(index + 1).toLowerCase() : '';
+        }
+
+        function getBaseName(name) {
+            return name.replace(/^.*[\\/]/, '');
+        }
+
+        function removeExtension(name) {
+            return normalizePath(getBaseName(name).replace(/\.[^.]+$/, ''));
+        }
+
+        function normalizePath(path) {
+            return (path || '').replace(/\\/g, '/').trim().toLowerCase();
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function firstMapValue(map) {
+            for (const value of map.values()) {
+                return value;
+            }
+            return null;
+        }
+
+        drawFrame(0);
+    </script>
+</body>
+
+</html>
