@@ -1,0 +1,2602 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web UBMSC Editor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            color-scheme: dark;
+            --side-pane-width: clamp(220px, 16vw, 300px);
+            --editor-pane-width: clamp(320px, 34vw, 540px);
+        }
+
+        body {
+            height: 100vh;
+            background: #dcdcdc;
+            color: #111;
+            font-family: "Malgun Gothic", "Noto Sans KR", Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #app {
+            height: 100vh;
+            display: grid;
+            grid-template-rows: 28px 28px 38px 1fr 28px;
+            background: #f3f3f3;
+            overflow: hidden;
+        }
+
+        #titleBar,
+        #menuBar,
+        #toolbar {
+            background: #f3f3f3;
+            color: #111;
+            border-bottom: 1px solid #c9c9c9;
+        }
+
+        #titleBar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            font-size: 13px;
+        }
+
+        #windowTitle {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #windowButtons {
+            display: flex;
+            gap: 14px;
+            font-size: 12px;
+        }
+
+        #menuBar {
+            display: flex;
+            align-items: center;
+            gap: 22px;
+            padding: 0 16px;
+            font-size: 12px;
+        }
+
+        #menuBar span {
+            cursor: default;
+        }
+
+        #toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            overflow-x: auto;
+        }
+
+        .btn,
+        select,
+        input {
+            border: 1px solid #909090;
+            background: #ffffff;
+            color: #111;
+            border-radius: 0;
+            padding: 3px 5px;
+            font-size: 11px;
+        }
+
+        input[type="number"],
+        input[type="text"] {
+            width: 100%;
+        }
+
+        .btn {
+            cursor: pointer;
+            min-width: 28px;
+            min-height: 24px;
+        }
+
+        .btn:hover,
+        select:hover,
+        input:hover {
+            background: #e7eefc;
+        }
+
+        .btn.primary {
+            background: #fff6bf;
+            border-color: #caa900;
+        }
+
+        .btn.primary:hover {
+            background: #fff0a1;
+        }
+
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        #statusBar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            align-items: center;
+            padding: 4px 10px;
+            background: #f7f7f7;
+            border-top: 1px solid #b8b8b8;
+            font-size: 11px;
+            color: #111;
+            overflow: hidden;
+        }
+
+        #statusBar span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #workspace {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) var(--side-pane-width);
+            background: #0a0a0a;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #workspace.editor-hidden {
+            grid-template-columns: minmax(0, 1fr) var(--side-pane-width);
+        }
+
+        #editorPane {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: var(--editor-pane-width);
+            min-width: 320px;
+            display: grid;
+            grid-template-columns: 56px minmax(0, 1fr);
+            background: #121212;
+            min-height: 0;
+            z-index: 4;
+            border-right: 1px solid #3f3f3f;
+            box-shadow: 8px 0 18px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+        }
+
+        #workspace.editor-hidden #editorPane {
+            transform: translateX(-101%);
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: none;
+        }
+
+        #lineNumbers {
+            padding: 12px 6px 12px 0;
+            text-align: right;
+            color: #6cb5ff;
+            background: #0e0e0e;
+            border-right: 1px solid #2e2e2e;
+            overflow: hidden;
+            user-select: none;
+            font: 12px/1.5 Consolas, "Courier New", monospace;
+            white-space: pre;
+        }
+
+        #editor {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            resize: none;
+            padding: 12px;
+            background: #121212;
+            color: #f3f4f6;
+            outline: none;
+            tab-size: 4;
+            font: 12px/1.5 Consolas, "Courier New", monospace;
+        }
+
+        #sidePane {
+            border-left: 1px solid #8f8f8f;
+            background: #e8e8e8;
+            display: grid;
+            grid-template-rows: minmax(0, 0.95fr) minmax(0, 1fr) minmax(90px, 0.7fr) minmax(90px, 0.55fr);
+            min-height: 0;
+            padding: 4px;
+            gap: 4px;
+            overflow: hidden;
+            width: var(--side-pane-width);
+        }
+
+        #sidePane > .panel {
+            min-width: 0;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .panel {
+            padding: 4px;
+            border: 1px solid #b2b2b2;
+            background: #efefef;
+        }
+
+        .panel h2 {
+            font-size: 10px;
+            margin-bottom: 4px;
+            color: #0a3f92;
+            text-align: center;
+            border: 1px solid #5ea0e8;
+            background: linear-gradient(#f8fbff, #dbeefe);
+            padding: 1px 0;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .preview-toolbar,
+        .tool-grid {
+            display: grid;
+            gap: 3px;
+        }
+
+        .preview-toolbar {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            margin-bottom: 4px;
+        }
+
+        .tool-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .zoom-grid {
+            display: grid;
+            gap: 6px;
+            margin: 6px 0;
+        }
+
+        .zoom-control {
+            display: grid;
+            grid-template-columns: 24px minmax(0, 1fr) 58px;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .zoom-icon {
+            font-size: 16px;
+            line-height: 1;
+            text-align: center;
+            color: #333;
+            user-select: none;
+        }
+
+        .zoom-control input[type="range"] {
+            width: 100%;
+            padding: 0;
+        }
+
+        .zoom-value {
+            width: 58px;
+        }
+
+        .check-row {
+            display: grid;
+            gap: 4px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #222;
+        }
+
+        .check-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .check-row input[type="checkbox"] {
+            width: auto;
+        }
+
+        .tool-grid .full {
+            grid-column: 1 / -1;
+        }
+
+        .field {
+            display: grid;
+            gap: 2px;
+            font-size: 10px;
+            color: #222;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 2px 6px;
+            font-size: 10px;
+        }
+
+        .meta-grid div {
+            padding: 2px 4px;
+            border: 0;
+            border-bottom: 1px solid #9a9a9a;
+            border-radius: 0;
+            background: transparent;
+        }
+
+        .meta-grid div strong {
+            display: block;
+            font-size: 10px;
+            margin-bottom: 1px;
+        }
+
+        #previewCanvas {
+            width: auto;
+            height: auto;
+            display: block;
+            border: 0;
+            border-radius: 0;
+            background: #050505;
+            cursor: crosshair;
+            position: relative;
+            z-index: 0;
+        }
+
+        #previewStage {
+            position: relative;
+            width: max-content;
+            min-width: 100%;
+            background: #050505;
+        }
+
+        #previewOverlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            background: transparent;
+        }
+
+        .note-block {
+            position: absolute;
+            min-height: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.55);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            color: rgba(0, 0, 0, 0.82);
+            font: bold 9px/1 Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            pointer-events: auto;
+            cursor: grab;
+        }
+
+        .note-block.dragging {
+            opacity: 0.75;
+            cursor: grabbing;
+            outline: 2px solid #22c55e;
+        }
+
+        #previewScroll {
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: scroll;
+            background: #050505;
+            border-top: 1px solid #2a2a2a;
+            border-bottom: 0;
+            scrollbar-color: #8a8a8a #d9d9d9;
+            scrollbar-width: auto;
+        }
+
+        #previewHScroll {
+            width: 100%;
+            overflow-x: scroll;
+            overflow-y: hidden;
+            background: #d9d9d9;
+            border-top: 1px solid #8f8f8f;
+            scrollbar-color: #8a8a8a #d9d9d9;
+            scrollbar-width: auto;
+        }
+
+        #previewHScrollInner {
+            height: 1px;
+        }
+
+        #previewLegend,
+        #toolHint,
+        .hint {
+            color: #454545;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        #issues {
+            overflow: auto;
+            min-height: 0;
+            font-size: 10px;
+            line-height: 1.3;
+        }
+
+        #issues .hint,
+        #issues #debugList {
+            max-height: none;
+            overflow-y: auto;
+        }
+
+        #issues ul {
+            list-style: none;
+            display: grid;
+            gap: 4px;
+        }
+
+        #issues li {
+            padding: 2px 3px;
+            border: 0;
+            border-bottom: 1px solid #c2c2c2;
+            border-radius: 0;
+            background: transparent;
+        }
+
+        .hint {
+            color: #94a3b8;
+        }
+
+        .warning {
+            color: #fbbf24;
+        }
+
+        .error {
+            color: #f87171;
+        }
+
+        #mainPane {
+            width: 100%;
+            min-width: 0;
+            min-height: 0;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) 16px;
+            background: #050505;
+            border-right: 1px solid #6f6f6f;
+            overflow: hidden;
+        }
+
+        #laneHeader {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: #050505;
+            color: #00d02a;
+            border-bottom: 1px solid #1e1e1e;
+            font: bold 11px/1 Consolas, monospace;
+            padding: 8px 0 8px 2px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            scrollbar-width: none;
+        }
+
+        #laneHeader::-webkit-scrollbar {
+            display: none;
+        }
+
+        #previewScroll::-webkit-scrollbar {
+            width: 14px;
+        }
+
+        #previewHScroll::-webkit-scrollbar {
+            height: 14px;
+        }
+
+        #previewScroll::-webkit-scrollbar-track {
+            background: #d9d9d9;
+        }
+
+        #previewScroll::-webkit-scrollbar-thumb {
+            background: #8a8a8a;
+            border: 2px solid #d9d9d9;
+        }
+
+        #previewScroll::-webkit-scrollbar-corner {
+            background: #d9d9d9;
+        }
+
+        #previewHScroll::-webkit-scrollbar-track {
+            background: #d9d9d9;
+        }
+
+        #previewHScroll::-webkit-scrollbar-thumb {
+            background: #8a8a8a;
+            border: 2px solid #d9d9d9;
+        }
+
+        #laneHeader span {
+            padding-left: 4px;
+            flex: 0 0 auto;
+        }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 22px;
+            background: #b8b8b8;
+            margin: 0 4px;
+            flex: 0 0 auto;
+        }
+
+        .toolbar-label {
+            font-size: 11px;
+            color: #444;
+            margin: 0 6px 0 2px;
+        }
+
+        @media (max-width: 1080px) {
+            :root {
+                --side-pane-width: 228px;
+                --editor-pane-width: min(360px, 92vw);
+            }
+
+            #workspace {
+                grid-template-columns: minmax(0, 1fr) var(--side-pane-width);
+            }
+
+            #sidePane {
+                border-left: 1px solid #8f8f8f;
+                border-top: 0;
+                padding: 4px;
+                gap: 4px;
+            }
+
+            #editorPane {
+                width: var(--editor-pane-width);
+                min-width: 280px;
+            }
+
+            #menuBar {
+                gap: 14px;
+                padding: 0 10px;
+            }
+
+            #toolbar {
+                padding: 4px 6px;
+            }
+        }
+
+        @media (max-width: 820px) {
+            :root {
+                --side-pane-width: 208px;
+                --editor-pane-width: min(320px, 94vw);
+            }
+
+            #app {
+                grid-template-rows: 28px 28px 34px 1fr 28px;
+            }
+
+            #menuBar {
+                gap: 10px;
+                font-size: 11px;
+            }
+
+            .tool-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tool-grid .full {
+                grid-column: auto;
+            }
+        }
+
+        @media (max-width: 640px) {
+            :root {
+                --side-pane-width: 176px;
+                --editor-pane-width: min(280px, 96vw);
+            }
+
+            #titleBar,
+            #menuBar {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+
+            #windowButtons {
+                gap: 8px;
+            }
+
+            #laneHeader {
+                font-size: 10px;
+            }
+
+            .panel {
+                padding: 4px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="titleBar">
+            <div id="windowTitle">untitled.bms - uBMSC Editor 3.4</div>
+            <div id="windowButtons">
+                <span>_</span>
+                <span>[]</span>
+                <span>X</span>
+            </div>
+        </div>
+
+        <div id="menuBar">
+            <span>파일 (F)</span>
+            <span>편집 (E)</span>
+            <span>View</span>
+            <span>설정 (O)</span>
+            <span>보기 (C)</span>
+            <span>프리뷰 (P)</span>
+        </div>
+
+        <div id="toolbar">
+            <label class="btn primary" for="fileInput" title="열기">📂</label>
+            <input type="file" id="fileInput" accept=".bms,.bme,.bml,.pms,.txt">
+            <button class="btn" id="newButton" title="새 문서">📄</button>
+            <button class="btn" id="saveButton" title="저장">💾</button>
+            <button class="btn" id="saveAsButton" title="다른 이름 저장">🖫</button>
+            <div class="toolbar-separator"></div>
+            <button class="btn" id="undoButton" title="실행 취소">↶</button>
+            <button class="btn" id="redoButton" title="다시 실행">↷</button>
+            <button class="btn" id="copyButton" title="복사">⧉</button>
+            <button class="btn" id="cutButton" title="잘라내기">✂</button>
+            <button class="btn" id="pasteButton" title="붙여넣기">📋</button>
+            <div class="toolbar-separator"></div>
+            <button class="btn" id="toggleEditorButton" title="텍스트 패널">TXT</button>
+            <span class="toolbar-label">Measure</span>
+            <select id="insertSelect">
+                <option value="">빠른 삽입</option>
+                <option value="#TITLE ">#TITLE</option>
+                <option value="#ARTIST ">#ARTIST</option>
+                <option value="#BPM 130">#BPM</option>
+                <option value="#PLAYLEVEL ">#PLAYLEVEL</option>
+                <option value="#WAV01 sample.wav">#WAV01</option>
+                <option value="#00111:00">#00111</option>
+                <option value="#00101:00">#00101</option>
+            </select>
+        </div>
+
+        <div id="workspace">
+            <div id="mainPane">
+                <div id="laneHeader">
+                    <span>Measure</span>
+                    <span>SCROLL</span>
+                    <span>BPM</span>
+                    <span>STOP</span>
+                    <span>A1</span>
+                    <span>A2</span>
+                    <span>A3</span>
+                    <span>A4</span>
+                    <span>A5</span>
+                    <span>A6</span>
+                    <span>A7</span>
+                    <span>A8</span>
+                    <span>BGA</span>
+                    <span>LAYER</span>
+                    <span>POOR</span>
+                    <span>B1</span>
+                    <span>B2</span>
+                    <span>B3</span>
+                    <span>B4</span>
+                    <span>B5</span>
+                    <span>B6</span>
+                    <span>B7</span>
+                    <span>B8</span>
+                    <span>B9</span>
+                    <span>B10</span>
+                    <span>B11</span>
+                    <span>B12</span>
+                    <span>B13</span>
+                    <span>B14</span>
+                    <span>B15</span>
+                </div>
+                <div id="previewScroll">
+                    <div id="previewStage">
+                        <canvas id="previewCanvas" width="1500" height="900"></canvas>
+                        <div id="previewOverlay"></div>
+                    </div>
+                </div>
+                <div id="previewHScroll">
+                    <div id="previewHScrollInner"></div>
+                </div>
+            </div>
+
+            <div id="editorPane">
+                <pre id="lineNumbers">1</pre>
+                <textarea id="editor" spellcheck="false" placeholder="BMS 파일을 열거나 새 문서를 시작하세요."></textarea>
+            </div>
+
+            <aside id="sidePane">
+                <section class="panel">
+                    <h2>HEADER</h2>
+                    <div class="meta-grid" id="summaryGrid"></div>
+                </section>
+
+                <section class="panel">
+                    <h2>격자</h2>
+                    <div class="preview-toolbar">
+                        <button class="btn" id="prevMeasureButton">↑</button>
+                        <button class="btn" id="nextMeasureButton">↓</button>
+                    </div>
+                     <div class="tool-grid">
+                        <label class="field">
+                            <span>마디</span>
+                            <input type="number" id="measureInput" min="0" value="1">
+                        </label>
+                        <label class="field">
+                            <span>해상도</span>
+                            <select id="resolutionSelect">
+                                <option value="16">16</option>
+                                <option value="32" selected>32</option>
+                                <option value="48">48</option>
+                                <option value="64">64</option>
+                                <option value="96">96</option>
+                                <option value="192">192</option>
+                            </select>
+                        </label>
+                        <label class="field full">
+                            <span>채널</span>
+                            <select id="channelSelect"></select>
+                        </label>
+                        <label class="field">
+                            <span>오브젝트 값</span>
+                            <input type="text" id="objectValueInput" maxlength="2" value="01">
+                        </label>
+                        <label class="field">
+                            <span>입력 모드</span>
+                            <select id="editModeSelect">
+                                <option value="normal">일반</option>
+                                <option value="long">롱노트</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>현재 슬롯</span>
+                            <input type="text" id="slotInfoInput" readonly value="measure 001 / slot 0">
+                        </label>
+                         <button class="btn" id="insertLineButton">빈 라인 생성</button>
+                         <button class="btn" id="clearLineButton">현재 라인 비우기</button>
+                     </div>
+                     <div class="zoom-grid">
+                         <label class="field">
+                             <span>마디간격 높이</span>
+                             <div class="zoom-control">
+                                 <span class="zoom-icon">↕</span>
+                                 <input type="range" id="verticalZoomRange" min="0.5" max="8" step="0.25" value="1">
+                                 <input class="zoom-value" type="number" id="verticalZoomInput" min="0.5" max="8" step="0.25" value="1">
+                             </div>
+                         </label>
+                         <label class="field">
+                             <span>좌우 마디길이</span>
+                             <div class="zoom-control">
+                                 <span class="zoom-icon">↔</span>
+                                 <input type="range" id="horizontalZoomRange" min="0.5" max="4" step="0.25" value="1">
+                                 <input class="zoom-value" type="number" id="horizontalZoomInput" min="0.5" max="4" step="0.25" value="1">
+                             </div>
+                         </label>
+                     </div>
+                     <div class="check-row">
+                         <label><input type="checkbox" id="snapToGridCheckbox" checked> 격자에 맞추기</label>
+                         <label><input type="checkbox" id="lockVerticalCheckbox"> 수직위치 고정</label>
+                     </div>
+                     <div class="hint" id="toolHint">클릭: 노트 추가/삭제</div>
+                     <div class="hint" id="previewLegend">텍스트 패널은 좌측 오버레이로 열립니다.</div>
+                 </section>
+
+                <section class="panel">
+                    <h2>BGM</h2>
+                    <ul id="issueList"></ul>
+                </section>
+
+                <section class="panel" id="issues">
+                    <h2>확장명령</h2>
+                    <div class="hint" id="debugSummary">추가 정보와 검사 결과가 이 영역에 표시됩니다.</div>
+                    <ul id="debugList"></ul>
+                </section>
+            </aside>
+        </div>
+
+        <div id="statusBar">
+            <span id="fileStatus">파일: 새 문서</span>
+            <span id="dirtyStatus">상태: 저장됨</span>
+            <span id="cursorStatus">Ln 1, Col 1</span>
+            <span id="historyStatus">Undo 0 / Redo 0</span>
+            <span id="messageStatus">준비됨</span>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById("editor");
+        const lineNumbers = document.getElementById("lineNumbers");
+        const fileInput = document.getElementById("fileInput");
+        const newButton = document.getElementById("newButton");
+        const saveButton = document.getElementById("saveButton");
+        const saveAsButton = document.getElementById("saveAsButton");
+        const undoButton = document.getElementById("undoButton");
+        const redoButton = document.getElementById("redoButton");
+        const copyButton = document.getElementById("copyButton");
+        const cutButton = document.getElementById("cutButton");
+        const pasteButton = document.getElementById("pasteButton");
+        const toggleEditorButton = document.getElementById("toggleEditorButton");
+        const insertSelect = document.getElementById("insertSelect");
+        const workspace = document.getElementById("workspace");
+        const laneHeader = document.getElementById("laneHeader");
+        const previewCanvas = document.getElementById("previewCanvas");
+        const previewStage = document.getElementById("previewStage");
+        const previewOverlay = document.getElementById("previewOverlay");
+        const previewScroll = document.getElementById("previewScroll");
+        const previewHScroll = document.getElementById("previewHScroll");
+        const previewHScrollInner = document.getElementById("previewHScrollInner");
+        const previewContext = previewCanvas.getContext("2d");
+        const prevMeasureButton = document.getElementById("prevMeasureButton");
+        const nextMeasureButton = document.getElementById("nextMeasureButton");
+        const measureInput = document.getElementById("measureInput");
+        const resolutionSelect = document.getElementById("resolutionSelect");
+        const channelSelect = document.getElementById("channelSelect");
+        const objectValueInput = document.getElementById("objectValueInput");
+        const editModeSelect = document.getElementById("editModeSelect");
+        const slotInfoInput = document.getElementById("slotInfoInput");
+        const insertLineButton = document.getElementById("insertLineButton");
+        const clearLineButton = document.getElementById("clearLineButton");
+        const verticalZoomRange = document.getElementById("verticalZoomRange");
+        const verticalZoomInput = document.getElementById("verticalZoomInput");
+        const horizontalZoomRange = document.getElementById("horizontalZoomRange");
+        const horizontalZoomInput = document.getElementById("horizontalZoomInput");
+        const snapToGridCheckbox = document.getElementById("snapToGridCheckbox");
+        const lockVerticalCheckbox = document.getElementById("lockVerticalCheckbox");
+
+        const fileStatus = document.getElementById("fileStatus");
+        const dirtyStatus = document.getElementById("dirtyStatus");
+        const cursorStatus = document.getElementById("cursorStatus");
+        const historyStatus = document.getElementById("historyStatus");
+        const messageStatus = document.getElementById("messageStatus");
+        const windowTitle = document.getElementById("windowTitle");
+        const summaryGrid = document.getElementById("summaryGrid");
+        const issueList = document.getElementById("issueList");
+        const toolHint = document.getElementById("toolHint");
+        const previewLegend = document.getElementById("previewLegend");
+        const debugSummary = document.getElementById("debugSummary");
+        const debugList = document.getElementById("debugList");
+
+        const SP_CHANNEL_ORDER = ["16", "11", "12", "13", "14", "15", "18", "19"];
+        const DP_CHANNEL_ORDER = ["16", "11", "12", "13", "14", "15", "18", "19", "26", "21", "22", "23", "24", "25", "28", "29"];
+        const BASE_NOTE_COLORS = ["#d96f6f", "#d8d8d8", "#6d82d9", "#d8d8d8", "#8a8ab0", "#d8d8d8", "#6d82d9", "#d8d8d8"];
+        const SP_BINDINGS_WITH_SCRATCH = [
+            { code: "ShiftLeft", label: "Shift" },
+            { code: "KeyS", label: "S" },
+            { code: "KeyD", label: "D" },
+            { code: "KeyF", label: "F" },
+            { code: "Space", label: "Space" },
+            { code: "KeyJ", label: "J" },
+            { code: "KeyK", label: "K" },
+            { code: "KeyL", label: "L" },
+        ];
+        const SP_BINDINGS_NO_SCRATCH = SP_BINDINGS_WITH_SCRATCH;
+        const DP_BINDINGS = [
+            { code: "ShiftLeft", label: "LShift" },
+            { code: "KeyZ", label: "Z" },
+            { code: "KeyS", label: "S" },
+            { code: "KeyX", label: "X" },
+            { code: "KeyD", label: "D" },
+            { code: "KeyC", label: "C" },
+            { code: "KeyF", label: "F" },
+            { code: "KeyV", label: "V" },
+            { code: "KeyM", label: "M" },
+            { code: "KeyK", label: "K" },
+            { code: "Comma", label: "," },
+            { code: "KeyL", label: "L" },
+            { code: "Period", label: "." },
+            { code: "Semicolon", label: ";" },
+            { code: "Slash", label: "/" },
+            { code: "ShiftRight", label: "RShift" },
+        ];
+        const PMS_BINDINGS = [
+            { code: "KeyA", label: "A" },
+            { code: "KeyS", label: "S" },
+            { code: "KeyD", label: "D" },
+            { code: "KeyF", label: "F" },
+            { code: "Space", label: "Space" },
+            { code: "KeyK", label: "K" },
+            { code: "KeyL", label: "L" },
+            { code: "Semicolon", label: ";" },
+            { code: "Quote", label: "'" },
+        ];
+        const COMMON_CHANNELS = ["16", "11", "12", "13", "14", "15", "18", "19", "26", "21", "22", "23", "24", "25", "28", "29", "51", "52", "53", "54", "55", "58", "59", "61", "62", "63", "64", "65", "68", "69", "01", "04", "06", "07", "03", "08", "09", "SC"];
+        const DEFAULT_TEXT = [
+            "#TITLE New Chart",
+            "#ARTIST ",
+            "#BPM 130",
+            "#PLAYLEVEL 1",
+            "",
+            "#00111:00"
+        ].join("\n");
+
+        const state = {
+            fileName: "untitled.bms",
+            fileHandle: null,
+            lastSavedText: "",
+            undoStack: [],
+            redoStack: [],
+            suppressHistory: false,
+            lastSnapshot: null,
+            chartModel: null,
+            currentMeasure: 1,
+            guiResolution: 32,
+            selectedChannel: "11",
+            selectedSlot: 0,
+            selectedValue: "01",
+            editMode: "normal",
+            previewLeadIn: 220,
+            previewMeasureHeight: 960,
+            previewZoomX: 1,
+            previewZoomY: 1,
+            editorVisible: false,
+            pointerPaintActive: false,
+            pointerPaintValue: null,
+            pointerPaintColumnKey: null,
+            pointerPaintMeasure: null,
+            dragNote: null,
+            noteElements: new Map(),
+            snapToGrid: true,
+            lockVerticalDrag: false,
+            renderQueued: false,
+        };
+
+        function scheduleRenderPreview() {
+            if (state.renderQueued) {
+                return;
+            }
+
+            state.renderQueued = true;
+            requestAnimationFrame(() => {
+                state.renderQueued = false;
+                renderPreview();
+            });
+        }
+
+        function createSnapshot() {
+            return {
+                text: editor.value,
+                selectionStart: editor.selectionStart,
+                selectionEnd: editor.selectionEnd,
+            };
+        }
+
+        function restoreSnapshot(snapshot) {
+            if (!snapshot) {
+                return;
+            }
+
+            state.suppressHistory = true;
+            editor.value = snapshot.text;
+            editor.selectionStart = snapshot.selectionStart;
+            editor.selectionEnd = snapshot.selectionEnd;
+            state.suppressHistory = false;
+            state.lastSnapshot = createSnapshot();
+            afterEditorChange();
+        }
+
+        function pushUndoSnapshot(snapshot) {
+            if (!snapshot) {
+                return;
+            }
+
+            state.undoStack.push(snapshot);
+            if (state.undoStack.length > 300) {
+                state.undoStack.shift();
+            }
+            state.redoStack = [];
+        }
+
+        function setMessage(text) {
+            messageStatus.textContent = text;
+        }
+
+        function isDirty() {
+            return editor.value !== state.lastSavedText;
+        }
+
+        function updateStatus() {
+            fileStatus.textContent = "파일: " + state.fileName;
+            dirtyStatus.textContent = "상태: " + (isDirty() ? "수정됨" : "저장됨");
+            historyStatus.textContent = "Undo " + state.undoStack.length + " / Redo " + state.redoStack.length;
+            undoButton.disabled = state.undoStack.length === 0;
+            redoButton.disabled = state.redoStack.length === 0;
+            toggleEditorButton.textContent = state.editorVisible ? "TXT" : "GRID";
+            workspace.classList.toggle("editor-hidden", !state.editorVisible);
+            windowTitle.textContent = state.fileName + " - uBMSC Editor 3.4";
+        }
+
+        function updateCursorStatus() {
+            const cursorIndex = editor.selectionStart;
+            const textBefore = editor.value.slice(0, cursorIndex);
+            const lines = textBefore.split("\n");
+            const line = lines.length;
+            const column = lines[lines.length - 1].length + 1;
+            cursorStatus.textContent = "Ln " + line + ", Col " + column;
+        }
+
+        function updateLineNumbers() {
+            const lineCount = Math.max(1, editor.value.split("\n").length);
+            const rows = [];
+            for (let line = 1; line <= lineCount; line += 1) {
+                rows.push(String(line));
+            }
+            lineNumbers.textContent = rows.join("\n");
+        }
+
+        function syncScroll() {
+            lineNumbers.scrollTop = editor.scrollTop;
+        }
+
+        function formatMeasure(measure) {
+            return String(Math.max(0, measure)).padStart(3, "0");
+        }
+
+        function sanitizeObjectValue(value) {
+            const cleaned = String(value || "01").toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 2);
+            return cleaned.padEnd(2, "0").slice(0, 2);
+        }
+
+        function splitDataPairs(data) {
+            const cleaned = data.trim().toUpperCase().replace(/[^0-9A-Z]/g, "");
+            const result = [];
+            for (let index = 0; index < cleaned.length; index += 2) {
+                const token = cleaned.slice(index, index + 2).toUpperCase();
+                if (token.length === 2) {
+                    result.push(token);
+                }
+            }
+            return result;
+        }
+
+        function normalizeVisibleChannel(channel) {
+            if (String(channel).toUpperCase() === "SC") return null;
+            const numeric = parseInt(channel, 10);
+            if (numeric >= 51 && numeric <= 59) return String(numeric - 40).padStart(2, "0");
+            if (numeric >= 61 && numeric <= 69) return String(numeric - 40).padStart(2, "0");
+            if ((numeric >= 11 && numeric <= 19) || (numeric >= 21 && numeric <= 29)) {
+                return String(numeric).padStart(2, "0");
+            }
+            return null;
+        }
+
+        function toLongChannel(channel) {
+            const numeric = parseInt(channel, 10);
+            if (numeric >= 11 && numeric <= 19) return String(numeric + 40).padStart(2, "0");
+            if (numeric >= 21 && numeric <= 29) return String(numeric + 40).padStart(2, "0");
+            return channel;
+        }
+
+        function resolveEditableChannel(column) {
+            if (!column || !column.channel) {
+                return null;
+            }
+            if (column.type === "note" && state.editMode === "long") {
+                return toLongChannel(column.channel);
+            }
+            return column.channel;
+        }
+
+        function getMeasureTopY(measure, canvasHeight) {
+            return canvasHeight - 40 - (measure + 1) * (state.previewMeasureHeight * state.previewZoomY);
+        }
+
+        function getPreferredStartMeasure() {
+            if (!state.chartModel || !state.chartModel.eventMap.size) {
+                return 0;
+            }
+
+            let preferredNote = null;
+            let preferredOther = null;
+            state.chartModel.eventMap.forEach((event) => {
+                const hasVisibleToken = event.tokens.some((token) => token !== "00");
+                if (!hasVisibleToken) {
+                    return;
+                }
+
+                const isNoteEvent = Boolean(normalizeVisibleChannel(event.channel));
+                if (isNoteEvent) {
+                    if (preferredNote === null || event.measure < preferredNote) {
+                        preferredNote = event.measure;
+                    }
+                    return;
+                }
+
+                if (preferredOther === null || event.measure < preferredOther) {
+                    preferredOther = event.measure;
+                }
+            });
+
+            if (preferredNote !== null) {
+                return Math.max(0, preferredNote);
+            }
+
+            if (preferredOther === null) {
+                return state.chartModel.measures.length ? Math.max(0, Math.min(...state.chartModel.measures)) : 0;
+            }
+
+            return Math.max(0, preferredOther);
+        }
+
+        function getPreferredStartColumnKey() {
+            if (!state.chartModel || !state.chartModel.eventMap.size) {
+                return null;
+            }
+
+            const columns = getPreviewLayout().metrics;
+            let preferred = null;
+
+            state.chartModel.eventMap.forEach((event) => {
+                const hasVisibleToken = event.tokens.some((token) => token !== "00");
+                if (!hasVisibleToken) {
+                    return;
+                }
+
+                const column = findColumnForEvent(columns, event.channel);
+                if (!column || !column.editable) {
+                    return;
+                }
+
+                if (!preferred || event.measure < preferred.measure || (event.measure === preferred.measure && column.x < preferred.x)) {
+                    preferred = { key: column.key, measure: event.measure, x: column.x };
+                }
+            });
+
+            return preferred ? preferred.key : null;
+        }
+
+        function scrollPreviewToColumnKey(columnKey) {
+            if (!columnKey) {
+                return;
+            }
+
+            const layout = getPreviewLayout();
+            const column = layout.metrics.find((entry) => entry.key === columnKey);
+            if (!column) {
+                return;
+            }
+
+            const targetLeft = Math.max(0, (column.x * state.previewZoomX) - 80);
+            previewScroll.scrollLeft = targetLeft;
+            previewHScroll.scrollLeft = targetLeft;
+            laneHeader.scrollLeft = targetLeft;
+        }
+
+        function changePreviewZoom(direction) {
+            const previousZoom = state.previewZoomY;
+            const nextZoom = Math.min(2.5, Math.max(0.5, Math.round((previousZoom + direction * 0.1) * 10) / 10));
+            if (nextZoom === previousZoom) {
+                return;
+            }
+
+            const centerRatioX = (previewScroll.scrollLeft + previewScroll.clientWidth * 0.5) / Math.max(previewCanvas.width, 1);
+            const centerRatioY = (previewScroll.scrollTop + previewScroll.clientHeight * 0.5) / Math.max(previewCanvas.height, 1);
+            state.previewZoomY = nextZoom;
+            verticalZoomRange.value = String(state.previewZoomY);
+            verticalZoomInput.value = state.previewZoomY.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+            renderPreview();
+            previewScroll.scrollLeft = Math.max(0, previewCanvas.width * centerRatioX - previewScroll.clientWidth * 0.5);
+            previewHScroll.scrollLeft = previewScroll.scrollLeft;
+            previewScroll.scrollTop = Math.max(0, previewCanvas.height * centerRatioY - previewScroll.clientHeight * 0.5);
+            laneHeader.scrollLeft = previewScroll.scrollLeft;
+            setMessage("높이 간격: " + state.previewZoomY.toFixed(1) + "x");
+        }
+
+        function resetPreviewZoom() {
+            if (state.previewZoomX === 1 && state.previewZoomY === 1) {
+                return;
+            }
+
+            state.previewZoomX = 1;
+            state.previewZoomY = 1;
+            horizontalZoomRange.value = "1";
+            horizontalZoomInput.value = "1";
+            verticalZoomRange.value = "1";
+            verticalZoomInput.value = "1";
+            renderPreview();
+            scrollPreviewToMeasure(state.currentMeasure);
+            setMessage("좌우 길이: 1.0x / 높이 간격: 1.0x");
+        }
+
+        async function readFileWithFallback(file) {
+            const buffer = await file.arrayBuffer();
+            const encodings = ["utf-8", "euc-kr", "shift_jis", "windows-1252"];
+
+            for (const encoding of encodings) {
+                try {
+                    const text = new TextDecoder(encoding).decode(buffer);
+                    if (/#\s*\d{3}[0-9A-Z]{2}\s*:/i.test(text) || /#TITLE/i.test(text)) {
+                        return text;
+                    }
+                } catch (error) {
+                }
+            }
+
+            return new TextDecoder("utf-8").decode(buffer);
+        }
+
+        function getColorIndexForChannel(channel) {
+            const normalized = normalizeVisibleChannel(channel) || channel;
+            const onePlayerOrder = ["16", "11", "12", "13", "14", "15", "18", "19"];
+            const baseChannel = normalized.startsWith("2") ? String(Number(normalized) - 10).padStart(2, "0") : normalized;
+            const index = onePlayerOrder.indexOf(baseChannel);
+            return index >= 0 ? index : 0;
+        }
+
+        function getColumnBackground(column) {
+            const backgrounds = {
+                measure: "rgba(0, 180, 180, 0.12)",
+                scroll: "rgba(0, 60, 60, 0.18)",
+                bpm: "rgba(40, 40, 40, 0.45)",
+                stop: "rgba(40, 40, 40, 0.45)",
+                A1: "rgba(70, 15, 15, 0.58)",
+                A2: "rgba(42, 42, 42, 0.65)",
+                A3: "rgba(10, 12, 42, 0.56)",
+                A4: "rgba(42, 42, 42, 0.65)",
+                A5: "rgba(42, 42, 42, 0.65)",
+                A6: "rgba(42, 42, 42, 0.65)",
+                A7: "rgba(10, 12, 42, 0.56)",
+                A8: "rgba(42, 42, 42, 0.65)",
+                bga: "rgba(18, 52, 18, 0.45)",
+                layer: "rgba(18, 52, 18, 0.45)",
+                poor: "rgba(52, 18, 18, 0.45)",
+                B1: "rgba(70, 15, 15, 0.42)",
+                B2: "rgba(70, 15, 15, 0.42)",
+                B3: "rgba(70, 15, 15, 0.42)",
+                B4: "rgba(70, 15, 15, 0.42)",
+                B5: "rgba(70, 15, 15, 0.42)",
+                B6: "rgba(70, 15, 15, 0.42)",
+                B7: "rgba(70, 15, 15, 0.42)",
+                B8: "rgba(70, 15, 15, 0.42)",
+            };
+            return backgrounds[column.key] || backgrounds[column.label] || "rgba(255,255,255,0.01)";
+        }
+
+        function describeLayout(lanes, hasDp, isPmsChart) {
+            const scratchCount = lanes.filter((channel) => channel === "16" || channel === "26").length;
+            const keyCount = lanes.length - scratchCount;
+            if (isPmsChart) return "PMS " + keyCount + "K";
+            if (hasDp) return scratchCount ? "DP " + scratchCount + "+" + keyCount : "DP " + keyCount + "K";
+            if (scratchCount) return scratchCount + "+" + keyCount;
+            return keyCount + "K";
+        }
+
+        function buildLaneLayout(visibleChannels, isPmsChart) {
+            const hasDp = Array.from(visibleChannels).some((channel) => channel.startsWith("2"));
+            const preferredOrder = hasDp ? DP_CHANNEL_ORDER : SP_CHANNEL_ORDER;
+            const orderedChannels = preferredOrder.filter((channel) => visibleChannels.has(channel));
+            const extras = Array.from(visibleChannels)
+                .filter((channel) => !orderedChannels.includes(channel))
+                .sort((left, right) => Number(left) - Number(right));
+            const lanes = [...orderedChannels, ...extras];
+            const bindings = isPmsChart && !hasDp
+                ? PMS_BINDINGS
+                : hasDp
+                    ? DP_BINDINGS
+                    : (lanes.includes("16") ? SP_BINDINGS_WITH_SCRATCH : SP_BINDINGS_NO_SCRATCH);
+
+            const colors = [];
+            const labels = [];
+            const channelToLane = {};
+
+            lanes.forEach((channel, lane) => {
+                const binding = bindings[lane] || { label: String(lane + 1) };
+                labels.push(binding.label);
+                colors.push(BASE_NOTE_COLORS[getColorIndexForChannel(channel)]);
+                channelToLane[channel] = lane;
+            });
+
+            return {
+                name: describeLayout(lanes, hasDp, isPmsChart),
+                lanes,
+                labels,
+                colors,
+                channelToLane,
+            };
+        }
+
+        function parseEditorModel(text) {
+            const lines = text.split(/\r?\n/);
+            const header = { title: "", artist: "", bpm: "", playlevel: "" };
+            const visibleChannels = new Set();
+            const measureSet = new Set();
+            const eventMap = new Map();
+            const lineInfoMap = new Map();
+            const warnings = [];
+            const wavMap = new Map();
+            let wavDefs = 0;
+            let bmpDefs = 0;
+
+            lines.forEach((rawLine, index) => {
+                const line = rawLine.trim();
+                if (!line) {
+                    return;
+                }
+
+                if (/^#TITLE\s+/i.test(line)) {
+                    header.title = line.replace(/^#TITLE\s+/i, "").trim();
+                    return;
+                }
+
+                if (/^#ARTIST\s+/i.test(line)) {
+                    header.artist = line.replace(/^#ARTIST\s+/i, "").trim();
+                    return;
+                }
+
+                if (/^#BPM\s+/i.test(line)) {
+                    header.bpm = line.replace(/^#BPM\s+/i, "").trim();
+                    return;
+                }
+
+                if (/^#PLAYLEVEL\s+/i.test(line)) {
+                    header.playlevel = line.replace(/^#PLAYLEVEL\s+/i, "").trim();
+                    return;
+                }
+
+                const wavMatch = line.match(/^#WAV([0-9A-Z]{2})\s+(.+)$/i);
+                if (wavMatch) {
+                    wavDefs += 1;
+                    wavMap.set(wavMatch[1].toUpperCase(), wavMatch[2].trim());
+                    return;
+                }
+
+                if (/^#BMP[0-9A-Z]{2}\s+/i.test(line)) {
+                    bmpDefs += 1;
+                    return;
+                }
+
+                const match = line.match(/^#\s*(\d{3})([0-9A-Z]{2})\s*:\s*(.+)$/i);
+                if (!match) {
+                    if (line.startsWith("#")) {
+                        warnings.push({ level: "warning", text: "Line " + (index + 1) + ": 해석하지 못한 헤더 또는 이벤트입니다" });
+                    }
+                    return;
+                }
+
+                const measure = parseInt(match[1], 10);
+                const channel = match[2].toUpperCase();
+                const data = match[3].trim();
+                const key = formatMeasure(measure) + channel;
+                const tokens = splitDataPairs(data);
+                if (data.length % 2 !== 0) {
+                    warnings.push({ level: "error", text: "Line " + (index + 1) + ": 데이터 길이가 홀수입니다" });
+                }
+
+                measureSet.add(measure);
+                lineInfoMap.set(key, index);
+                eventMap.set(key, {
+                    measure,
+                    channel,
+                    key,
+                    lineIndex: index,
+                    tokenCount: Math.max(tokens.length, 1),
+                    tokens,
+                });
+
+                const visibleChannel = normalizeVisibleChannel(channel);
+                if (visibleChannel) {
+                    visibleChannels.add(visibleChannel);
+                }
+            });
+
+            if (!header.title) {
+                warnings.push({ level: "warning", text: "#TITLE 이 없습니다" });
+            }
+            if (!header.bpm) {
+                warnings.push({ level: "warning", text: "기본 #BPM 이 없습니다" });
+            }
+
+            return {
+                header,
+                lines,
+                eventMap,
+                lineInfoMap,
+                visibleChannels,
+                wavMap,
+                channels: Array.from(new Set(Array.from(eventMap.values()).map((event) => event.channel))).sort(),
+                measures: Array.from(measureSet).sort((left, right) => left - right),
+                maxMeasure: measureSet.size ? Math.max(...measureSet) : 1,
+                wavDefs,
+                bmpDefs,
+                warnings,
+            };
+        }
+
+        function countPlayableNotes(model) {
+            let total = 0;
+            model.eventMap.forEach((event) => {
+                if (!normalizeVisibleChannel(event.channel)) {
+                    return;
+                }
+                total += event.tokens.filter((token) => token !== "00").length;
+            });
+            return total;
+        }
+
+        function ensureChannelOptions() {
+            const visible = state.chartModel ? Array.from(state.chartModel.visibleChannels).sort((a, b) => Number(a) - Number(b)) : [];
+            const channels = Array.from(new Set([...COMMON_CHANNELS, ...visible, state.selectedChannel])).sort((a, b) => Number(a) - Number(b));
+            channelSelect.innerHTML = channels
+                .map((channel) => "<option value=\"" + escapeHtml(channel) + "\">" + escapeHtml(channel) + "</option>")
+                .join("");
+            channelSelect.value = state.selectedChannel;
+        }
+
+        function getUbmscColumns() {
+            const spColumns = SP_CHANNEL_ORDER.map((channel, index) => ({
+                key: "A" + (index + 1),
+                label: "A" + (index + 1),
+                channel,
+                type: "note",
+                width: 56,
+                color: BASE_NOTE_COLORS[getColorIndexForChannel(channel)],
+                editable: true,
+            }));
+            const dpColumns = ["26", "21", "22", "23", "24", "25", "28", "29"].map((channel, index) => ({
+                key: "B" + (index + 1),
+                label: "B" + (index + 1),
+                channel,
+                type: "note",
+                width: 56,
+                color: BASE_NOTE_COLORS[getColorIndexForChannel(channel)],
+                editable: true,
+            }));
+            const trailingChannels = ["01", "04", "07", "06", "03", "08", "09"];
+            const trailingColumns = trailingChannels.map((channel, index) => ({
+                key: "BX" + (index + 9),
+                label: "B" + (index + 9),
+                channel,
+                type: "event",
+                width: 56,
+                color: ["#8b5cf6", "#3ddc84", "#22c55e", "#ef4444", "#ff4040", "#22c55e", "#ff9f43"][index],
+                editable: true,
+            }));
+
+            return [
+                { key: "measure", label: "Measure", channel: null, type: "measure", width: 70, color: "#22d3ee", editable: false },
+                { key: "scroll", label: "SCROLL", channel: "SC", type: "event", width: 62, color: "#22c55e", editable: true },
+                { key: "bpm", label: "BPM", channel: "03", type: "event", width: 54, color: "#ff4040", editable: true },
+                { key: "stop", label: "STOP", channel: "09", type: "event", width: 54, color: "#ff9f43", editable: true },
+                ...spColumns,
+                { key: "bga", label: "BGA", channel: "04", type: "event", width: 58, color: "#3ddc84", editable: true },
+                { key: "layer", label: "LAYER", channel: "07", type: "event", width: 58, color: "#22c55e", editable: true },
+                { key: "poor", label: "POOR", channel: "06", type: "event", width: 58, color: "#ef4444", editable: true },
+                ...dpColumns,
+                ...trailingColumns,
+            ];
+        }
+
+        function renderLaneHeader(columns) {
+            laneHeader.innerHTML = columns.map((column) => {
+                const width = Math.round(column.width * state.previewZoomX);
+                return "<span style=\"width:" + width + "px;min-width:" + width + "px;color:" + escapeHtml(column.color || "#00d02a") + "\">" + escapeHtml(column.label) + "</span>";
+            }).join("");
+        }
+
+        function getColumnMetrics(columns) {
+            let x = 0;
+            return columns.map((column) => {
+                const result = { ...column, x, right: x + column.width };
+                x += column.width;
+                return result;
+            });
+        }
+
+        function findColumnForEvent(columns, channel) {
+            const visibleChannel = normalizeVisibleChannel(channel);
+            return columns.find((column) => {
+                if (!column.channel) {
+                    return false;
+                }
+                if (column.type === "note") {
+                    return column.channel === (visibleChannel || channel);
+                }
+                return column.channel === channel;
+            }) || null;
+        }
+
+        function getPreviewLayout() {
+            const columns = getUbmscColumns();
+            return {
+                columns,
+                metrics: getColumnMetrics(columns),
+                width: columns.reduce((total, column) => total + column.width, 0),
+            };
+        }
+
+        function syncHorizontalScroll(source) {
+            const scrollLeft = source === "bottom"
+                ? previewHScroll.scrollLeft
+                : previewScroll.scrollLeft;
+            previewScroll.scrollLeft = scrollLeft;
+            previewHScroll.scrollLeft = scrollLeft;
+            laneHeader.scrollLeft = scrollLeft;
+        }
+
+        function renderDebugPanel(model, renderedEvents, unmatchedEvents) {
+            const channelText = model.channels.length ? model.channels.join(", ") : "none";
+            debugSummary.textContent = "채널: " + channelText + " | 이벤트: " + model.eventMap.size + " | 렌더링: " + renderedEvents.length + " | 미매칭: " + unmatchedEvents.length;
+
+            const previewItems = [];
+            renderedEvents.slice(0, 12).forEach((entry) => {
+                previewItems.push("<li class=\"hint\">R M" + escapeHtml(formatMeasure(entry.measure)) + " CH " + escapeHtml(entry.channel) + " = " + escapeHtml(entry.token) + "</li>");
+            });
+            unmatchedEvents.slice(0, 8).forEach((entry) => {
+                previewItems.push("<li class=\"warning\">U M" + escapeHtml(formatMeasure(entry.measure)) + " CH " + escapeHtml(entry.channel) + "</li>");
+            });
+
+            if (!previewItems.length) {
+                previewItems.push("<li class=\"warning\">렌더링 가능한 이벤트를 아직 찾지 못했습니다.</li>");
+            }
+
+            debugList.innerHTML = previewItems.join("");
+        }
+
+        function getStemLabel(fileName) {
+            const stem = String(fileName || "")
+                .split(/[\\/]/)
+                .pop()
+                .replace(/\.[^.]+$/, "");
+            if (!stem) {
+                return "--";
+            }
+            return stem.length > 5 ? stem.slice(0, 5) : stem;
+        }
+
+        function getEventDisplayLabel(model, channel, token) {
+            if (!token || token === "00") {
+                return token;
+            }
+
+            const usesWavMap = channel === "01" || Boolean(normalizeVisibleChannel(channel));
+            if (usesWavMap && model && model.wavMap && model.wavMap.has(token)) {
+                return getStemLabel(model.wavMap.get(token));
+            }
+
+            return token;
+        }
+
+        function getNoteBlockRect(column, measure, tokenIndex, tokenCount, canvasHeight) {
+            const topY = getMeasureTopY(measure, canvasHeight);
+            const scaledMeasureHeight = state.previewMeasureHeight * state.previewZoomY;
+            const scaledColumnWidth = column.width * state.previewZoomX;
+            const scaledX = column.x * state.previewZoomX;
+            const slotHeight = scaledMeasureHeight / Math.max(tokenCount, 1);
+            const laneInset = Math.max(1, Math.floor(scaledColumnWidth * 0.04));
+            const noteWidth = Math.max(18, scaledColumnWidth - laneInset * 2);
+            const noteHeight = 12;
+            const lineY = topY + scaledMeasureHeight - ((tokenIndex + 1) * slotHeight);
+            const noteTop = Math.round(lineY - noteHeight - 1);
+
+            return {
+                x: scaledX + laneInset,
+                y: noteTop,
+                width: noteWidth,
+                height: noteHeight,
+            };
+        }
+
+        function renderSummary() {
+            const model = parseEditorModel(editor.value);
+            state.chartModel = model;
+            const noteCount = countPlayableNotes(model);
+            const previewLayout = getPreviewLayout();
+            const values = [
+                ["제목", model.header.title || "-"],
+                ["아티스트", model.header.artist || "-"],
+                ["기본 BPM", model.header.bpm || "-"],
+                ["레벨", model.header.playlevel || "-"],
+                ["레이아웃", "uBMSC Grid"],
+                ["소절 수", String(model.measures.length)],
+                ["노트 수", String(noteCount)],
+                ["WAV 정의", String(model.wavDefs)],
+                ["BMP 정의", String(model.bmpDefs)],
+            ];
+
+            summaryGrid.innerHTML = values
+                .map(([label, value]) => "<div><strong>" + escapeHtml(label) + "</strong><br>" + escapeHtml(value) + "</div>")
+                .join("");
+
+            const issues = model.warnings.length ? model.warnings : [{ level: "hint", text: "기본 검사에서 큰 문제를 찾지 못했습니다" }];
+            issueList.innerHTML = issues
+                .map((issue) => "<li class=\"" + escapeHtml(issue.level) + "\">" + escapeHtml(issue.text) + "</li>")
+                .join("");
+
+            const wavEntries = Array.from(model.wavMap.entries()).slice(0, 24);
+            if (wavEntries.length) {
+                issueList.innerHTML = wavEntries
+                    .map(([code, fileName]) => "<li class=\"hint\">" + escapeHtml(code) + ": " + escapeHtml(fileName) + "</li>")
+                    .join("");
+            }
+
+            debugSummary.textContent = "채널: " + (model.channels.length ? model.channels.join(", ") : "none");
+            debugList.innerHTML = model.eventMap.size
+                ? Array.from(model.eventMap.values()).slice(0, 12).map((event) => {
+                    const token = event.tokens.find((entry) => entry !== "00") || "00";
+                    return "<li class=\"hint\">P M" + escapeHtml(formatMeasure(event.measure)) + " CH " + escapeHtml(event.channel) + " = " + escapeHtml(token) + "</li>";
+                }).join("")
+                : "<li class=\"warning\">파싱된 이벤트가 없습니다.</li>";
+
+            ensureMeasureRange();
+            ensureChannelOptions();
+            scheduleRenderPreview();
+        }
+
+        function ensureMeasureRange() {
+            const maxMeasure = Math.max(0, state.chartModel ? state.chartModel.maxMeasure : 0);
+            if (state.currentMeasure > maxMeasure) {
+                state.currentMeasure = maxMeasure;
+            }
+            if (state.currentMeasure < 0) {
+                state.currentMeasure = 0;
+            }
+            measureInput.max = String(Math.max(maxMeasure + 1, 999));
+            measureInput.value = String(state.currentMeasure);
+        }
+
+        function renderPreview() {
+            const ctx = previewContext;
+            const layout = getPreviewLayout();
+            const columns = layout.columns;
+            const metrics = layout.metrics;
+            const width = Math.round(layout.width * state.previewZoomX);
+            const marginLeft = 0;
+            const marginTop = 22;
+            const resolution = state.guiResolution;
+            const measureHeight = state.previewMeasureHeight * state.previewZoomY;
+            const leadIn = state.previewLeadIn * state.previewZoomY;
+            const maxMeasure = Math.max(state.currentMeasure, state.chartModel ? state.chartModel.maxMeasure : 0, 0);
+            const totalMeasures = maxMeasure + 3;
+            const totalHeight = leadIn + totalMeasures * measureHeight + 40;
+            previewCanvas.width = width;
+            previewCanvas.height = totalHeight;
+            previewStage.style.width = width + "px";
+            previewStage.style.height = totalHeight + "px";
+            previewOverlay.style.width = width + "px";
+            previewOverlay.style.height = totalHeight + "px";
+            previewOverlay.innerHTML = "";
+            state.noteElements = new Map();
+            previewHScrollInner.style.width = width + "px";
+            const height = previewCanvas.height;
+            renderLaneHeader(columns);
+
+            ctx.clearRect(0, 0, width, height);
+
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.fillStyle = "rgba(255,255,255,0.012)";
+            ctx.fillRect(0, marginTop, width, leadIn - marginTop);
+
+            ctx.fillStyle = "#5eead4";
+            ctx.textAlign = "left";
+            ctx.font = "12px Consolas";
+            ctx.fillText("lead-in", 8, marginTop + 18);
+
+            for (let measure = 0; measure < totalMeasures; measure += 1) {
+                const topY = getMeasureTopY(measure, height);
+                const gridHeight = measureHeight;
+
+                metrics.forEach((column) => {
+                    const fillStyle = getColumnBackground(column);
+                    ctx.fillStyle = fillStyle;
+                    const scaledX = column.x * state.previewZoomX;
+                    const scaledWidth = column.width * state.previewZoomX;
+                    ctx.fillRect(scaledX, topY, scaledWidth, gridHeight);
+                    ctx.strokeStyle = "rgba(120, 120, 120, 0.32)";
+                    ctx.strokeRect(scaledX, topY, scaledWidth, gridHeight);
+                });
+
+                for (let slot = 0; slot <= resolution; slot += 1) {
+                    const y = topY + (slot / resolution) * gridHeight;
+                    ctx.strokeStyle = slot % 4 === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)";
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+
+                ctx.textAlign = "right";
+                ctx.fillStyle = measure === state.currentMeasure ? "#24d5ff" : "#24d5ff";
+                ctx.font = "bold 14px Consolas";
+                const measureColumn = metrics[0];
+                ctx.fillText("[" + formatMeasure(measure) + "]", (measureColumn.right * state.previewZoomX) - 6, topY + 20);
+            }
+
+            if (!state.chartModel) {
+                return;
+            }
+
+            const renderedEvents = [];
+            const unmatchedEvents = [];
+            const noteFragment = document.createDocumentFragment();
+            state.chartModel.eventMap.forEach((event) => {
+                const column = findColumnForEvent(metrics, event.channel);
+                if (!column) {
+                    if (event.tokens.some((token) => token !== "00")) {
+                        unmatchedEvents.push({ measure: event.measure, channel: event.channel });
+                    }
+                    return;
+                }
+
+                const color = column.color || "#ffffff";
+                const tokenCount = Math.max(event.tokens.length, 1);
+                event.tokens.forEach((token, index) => {
+                    if (token === "00") {
+                        return;
+                    }
+                    const rect = getNoteBlockRect(column, event.measure, index, tokenCount, height);
+                    renderedEvents.push({ measure: event.measure, channel: event.channel, token });
+                    ctx.fillStyle = color;
+                    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
+                    ctx.font = "10px Arial";
+                    ctx.textAlign = "center";
+                    const label = getEventDisplayLabel(state.chartModel, event.channel, token);
+                    ctx.fillText(label, rect.x + rect.width / 2, rect.y + Math.min(rect.height - 3, rect.height / 2 + 3));
+
+                    const note = document.createElement("div");
+                    note.className = "note-block";
+                    note.style.left = rect.x + "px";
+                    note.style.top = rect.y + "px";
+                    note.style.width = rect.width + "px";
+                    note.style.height = rect.height + "px";
+                    note.style.background = color;
+                    note.textContent = label;
+                    note.dataset.measure = String(event.measure);
+                    note.dataset.channel = event.channel;
+                    note.dataset.slot = String(index);
+                    note.dataset.tokenCount = String(tokenCount);
+                    note.dataset.token = token;
+                    const noteKey = event.measure + ":" + event.channel + ":" + index + ":" + token;
+                    note.dataset.noteKey = noteKey;
+                    state.noteElements.set(noteKey, note);
+                    noteFragment.appendChild(note);
+                });
+            });
+            previewOverlay.appendChild(noteFragment);
+
+            if (!renderedEvents.length) {
+                ctx.fillStyle = "#ffb020";
+                ctx.textAlign = "left";
+                ctx.font = "12px Consolas";
+                ctx.fillText("No rendered notes/events from loaded BMS data", 12, Math.max(40, leadIn - 18));
+            }
+
+            renderDebugPanel(state.chartModel, renderedEvents, unmatchedEvents);
+
+            const selectedColumn = findColumnForEvent(metrics, state.selectedChannel) || metrics.find((column) => column.channel === state.selectedChannel || resolveEditableChannel(column) === state.selectedChannel);
+            if (selectedColumn) {
+                const rect = getNoteBlockRect(selectedColumn, state.currentMeasure, state.selectedSlot, resolution, height);
+                ctx.strokeStyle = "#22c55e";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2);
+                ctx.lineWidth = 1;
+            }
+
+            syncHorizontalScroll("grid");
+        }
+
+        function scrollPreviewToMeasure(measure) {
+            const canvasHeight = previewCanvas.height;
+            const targetTop = Math.max(0, getMeasureTopY(measure, canvasHeight) - 24);
+            previewScroll.scrollTop = targetTop;
+            requestAnimationFrame(() => {
+                previewScroll.scrollTop = targetTop;
+                syncHorizontalScroll("grid");
+            });
+        }
+
+        function afterEditorChange() {
+            updateLineNumbers();
+            updateCursorStatus();
+            updateStatus();
+            renderSummary();
+            updateSlotDisplay();
+            syncScroll();
+        }
+
+        function loadText(text, fileName, fileHandle) {
+            editor.value = text;
+            state.fileName = fileName || "untitled.bms";
+            state.fileHandle = fileHandle || null;
+            state.lastSavedText = text;
+            state.undoStack = [];
+            state.redoStack = [];
+            state.lastSnapshot = createSnapshot();
+            afterEditorChange();
+            state.currentMeasure = getPreferredStartMeasure();
+            const preferredColumnKey = getPreferredStartColumnKey();
+            measureInput.value = String(state.currentMeasure);
+            scheduleRenderPreview();
+            scrollPreviewToMeasure(state.currentMeasure);
+            requestAnimationFrame(() => {
+                scrollPreviewToMeasure(state.currentMeasure);
+                scrollPreviewToColumnKey(preferredColumnKey);
+            });
+            setMessage(
+                "파일을 불러왔습니다. 이벤트 " + state.chartModel.eventMap.size + "개, 노트 " + countPlayableNotes(state.chartModel) + "개를 읽었습니다."
+            );
+        }
+
+        function confirmDiscardChanges() {
+            if (!isDirty()) {
+                return true;
+            }
+            return confirm("저장되지 않은 변경사항이 있습니다. 계속하시겠습니까?");
+        }
+
+        async function openFile(event) {
+            if (!confirmDiscardChanges()) {
+                fileInput.value = "";
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const text = await readFileWithFallback(file);
+            loadText(text, file.name, null);
+            setMessage("파일을 불러왔습니다");
+            fileInput.value = "";
+        }
+
+        function newDocument() {
+            if (!confirmDiscardChanges()) {
+                return;
+            }
+
+            loadText(DEFAULT_TEXT, "untitled.bms", null);
+            state.currentMeasure = 0;
+            state.selectedChannel = "11";
+            state.selectedSlot = 0;
+            setMessage("새 문서를 만들었습니다");
+        }
+
+        function downloadText(text, fileName) {
+            const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = fileName;
+            anchor.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function saveFile() {
+            try {
+                if (!state.fileHandle && window.showSaveFilePicker) {
+                    await saveFileAs();
+                    return;
+                }
+
+                if (state.fileHandle && window.showSaveFilePicker) {
+                    const writable = await state.fileHandle.createWritable();
+                    await writable.write(editor.value);
+                    await writable.close();
+                } else {
+                    downloadText(editor.value, state.fileName);
+                }
+
+                state.lastSavedText = editor.value;
+                updateStatus();
+                setMessage("저장했습니다");
+            } catch (error) {
+                setMessage("저장 실패: " + error.message);
+            }
+        }
+
+        async function saveFileAs() {
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: state.fileName,
+                        types: [{
+                            description: "BMS Chart",
+                            accept: { "text/plain": [".bms", ".bme", ".bml", ".pms", ".txt"] },
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(editor.value);
+                    await writable.close();
+                    state.fileHandle = handle;
+                    state.fileName = handle.name || state.fileName;
+                    state.lastSavedText = editor.value;
+                    updateStatus();
+                    setMessage("다른 이름으로 저장했습니다");
+                    return;
+                }
+
+                const nextName = prompt("파일 이름을 입력하세요", state.fileName) || state.fileName;
+                state.fileName = nextName.trim() || state.fileName;
+                downloadText(editor.value, state.fileName);
+                state.lastSavedText = editor.value;
+                updateStatus();
+                setMessage("다운로드로 저장했습니다");
+            } catch (error) {
+                setMessage("다른 이름 저장 실패: " + error.message);
+            }
+        }
+
+        function undoEdit() {
+            if (!state.undoStack.length) {
+                return;
+            }
+
+            const current = createSnapshot();
+            const snapshot = state.undoStack.pop();
+            state.redoStack.push(current);
+            restoreSnapshot(snapshot);
+            setMessage("실행 취소");
+        }
+
+        function redoEdit() {
+            if (!state.redoStack.length) {
+                return;
+            }
+
+            const current = createSnapshot();
+            const snapshot = state.redoStack.pop();
+            state.undoStack.push(current);
+            restoreSnapshot(snapshot);
+            setMessage("다시 실행");
+        }
+
+        function replaceSelection(text) {
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            const before = editor.value.slice(0, start);
+            const after = editor.value.slice(end);
+            editor.value = before + text + after;
+            const nextPos = start + text.length;
+            editor.selectionStart = nextPos;
+            editor.selectionEnd = nextPos;
+            state.lastSnapshot = createSnapshot();
+            afterEditorChange();
+        }
+
+        async function copySelection() {
+            const selectedText = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+            if (!selectedText) {
+                setMessage("선택된 텍스트가 없습니다");
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(selectedText);
+            } catch (error) {
+                editor.focus();
+                document.execCommand("copy");
+            }
+            setMessage("복사했습니다");
+        }
+
+        async function cutSelection() {
+            const selectedText = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+            if (!selectedText) {
+                setMessage("선택된 텍스트가 없습니다");
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(selectedText);
+            } catch (error) {
+                editor.focus();
+                document.execCommand("copy");
+            }
+
+            pushUndoSnapshot(state.lastSnapshot);
+            replaceSelection("");
+            setMessage("잘라내기했습니다");
+        }
+
+        async function pasteClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                pushUndoSnapshot(state.lastSnapshot);
+                replaceSelection(text);
+                setMessage("붙여넣기했습니다");
+            } catch (error) {
+                setMessage("붙여넣기 실패: 브라우저 권한을 확인하세요");
+            }
+        }
+
+        function insertTemplate(value) {
+            if (!value) {
+                return;
+            }
+
+            pushUndoSnapshot(state.lastSnapshot);
+            const prefix = editor.selectionStart > 0 && editor.value[editor.selectionStart - 1] !== "\n" ? "\n" : "";
+            replaceSelection(prefix + value);
+            editor.focus();
+            insertSelect.value = "";
+            setMessage("템플릿을 삽입했습니다");
+        }
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function updateSlotDisplay() {
+            slotInfoInput.value = "measure " + formatMeasure(state.currentMeasure) + " / slot " + state.selectedSlot;
+            toolHint.textContent = state.lockVerticalDrag
+                ? "클릭: 노트 추가/삭제 | 드래그: 가로 이동"
+                : "클릭: 노트 추가/삭제 | 드래그: 위치 이동";
+            previewLegend.textContent = (state.snapToGrid ? "격자 맞춤 ON" : "격자 맞춤 OFF") + " / 텍스트 패널은 좌측 오버레이로 열립니다.";
+        }
+
+        function setEditorText(text, message) {
+            state.suppressHistory = true;
+            editor.value = text;
+            state.suppressHistory = false;
+            state.lastSnapshot = createSnapshot();
+            afterEditorChange();
+            if (message) {
+                setMessage(message);
+            }
+        }
+
+        function applyTokenMutations(mutations, message) {
+            const lines = editor.value.split(/\r?\n/);
+            const entries = new Map();
+
+            mutations.forEach((mutation) => {
+                const measureText = formatMeasure(mutation.measure);
+                const key = measureText + mutation.channel;
+                if (!entries.has(key)) {
+                    const existing = state.chartModel ? state.chartModel.eventMap.get(key) : null;
+                    const tokenCount = Math.max(mutation.tokenCount || 1, existing ? existing.tokens.length : 0, 1);
+                    const tokens = existing ? existing.tokens.slice() : new Array(tokenCount).fill("00");
+                    while (tokens.length < tokenCount) {
+                        tokens.push("00");
+                    }
+                    entries.set(key, {
+                        measure: mutation.measure,
+                        channel: mutation.channel,
+                        tokens,
+                        keepEmptyLine: Boolean(mutation.keepEmptyLine),
+                    });
+                }
+
+                const entry = entries.get(key);
+                while (entry.tokens.length < mutation.tokenCount) {
+                    entry.tokens.push("00");
+                }
+                entry.keepEmptyLine = entry.keepEmptyLine || Boolean(mutation.keepEmptyLine);
+                mutation.apply(entry.tokens);
+            });
+
+            const sortedEntries = Array.from(entries.values()).sort((left, right) => {
+                if (left.measure !== right.measure) {
+                    return left.measure - right.measure;
+                }
+                return left.channel.localeCompare(right.channel);
+            });
+
+            sortedEntries.forEach((entry) => {
+                const measureText = formatMeasure(entry.measure);
+                const serialized = entry.tokens.join("").toUpperCase();
+                const targetRegex = new RegExp("^#" + measureText + entry.channel + ":", "i");
+                const matchingIndexes = [];
+                lines.forEach((line, index) => {
+                    if (targetRegex.test(line.trim())) {
+                        matchingIndexes.push(index);
+                    }
+                });
+
+                const hasContent = /[1-9A-Z]/.test(serialized.replace(/00/g, ""));
+                if (!hasContent && !entry.keepEmptyLine) {
+                    for (let index = matchingIndexes.length - 1; index >= 0; index -= 1) {
+                        lines.splice(matchingIndexes[index], 1);
+                    }
+                    return;
+                }
+
+                const nextLine = "#" + measureText + entry.channel + ":" + serialized;
+                if (matchingIndexes.length) {
+                    lines[matchingIndexes[0]] = nextLine;
+                    for (let index = matchingIndexes.length - 1; index >= 1; index -= 1) {
+                        lines.splice(matchingIndexes[index], 1);
+                    }
+                    return;
+                }
+
+                let insertIndex = lines.length;
+                for (let index = 0; index < lines.length; index += 1) {
+                    const match = lines[index].trim().match(/^#(\d{3})([0-9A-Z]{2}):/i);
+                    if (!match) {
+                        continue;
+                    }
+                    const lineMeasure = parseInt(match[1], 10);
+                    const lineChannel = match[2].toUpperCase();
+                    if (lineMeasure > entry.measure || (lineMeasure === entry.measure && lineChannel > entry.channel)) {
+                        insertIndex = index;
+                        break;
+                    }
+                }
+                lines.splice(insertIndex, 0, nextLine);
+            });
+
+            setEditorText(lines.join("\n"), message);
+        }
+
+        function moveExistingNote(noteData, hit) {
+            if (!noteData || !hit) {
+                return;
+            }
+
+            const targetChannel = hit.column.type === "note" ? hit.column.channel : noteData.channel;
+            if (!targetChannel) {
+                return;
+            }
+
+            const targetMeasure = state.lockVerticalDrag ? noteData.measure : hit.measure;
+            const targetSlot = state.lockVerticalDrag ? noteData.slot : hit.slot;
+            const samePosition = targetMeasure === noteData.measure && noteData.channel === targetChannel && targetSlot === noteData.slot;
+            if (samePosition) {
+                scheduleRenderPreview();
+                return;
+            }
+
+            pushUndoSnapshot(state.lastSnapshot);
+            applyTokenMutations([
+                {
+                    measure: noteData.measure,
+                    channel: noteData.channel,
+                    tokenCount: noteData.tokenCount,
+                    apply(tokens) {
+                        if (noteData.slot < tokens.length) {
+                            tokens[noteData.slot] = "00";
+                        }
+                    },
+                },
+                {
+                    measure: targetMeasure,
+                    channel: targetChannel,
+                    tokenCount: Math.max(state.guiResolution, noteData.tokenCount),
+                    apply(tokens) {
+                        while (tokens.length < state.guiResolution) {
+                            tokens.push("00");
+                        }
+                        tokens[targetSlot] = noteData.token;
+                    },
+                },
+            ], "노트를 이동했습니다");
+        }
+
+        function setLineForMeasureChannel(measure, channel, tokenCount, updateFn, keepEmptyLine = false) {
+            const lines = editor.value.split(/\r?\n/);
+            const measureText = formatMeasure(measure);
+            const key = measureText + channel;
+            const existing = state.chartModel ? state.chartModel.eventMap.get(key) : null;
+            const currentTokens = existing ? existing.tokens.slice() : new Array(tokenCount).fill("00");
+            const workingTokens = currentTokens.slice();
+            while (workingTokens.length < tokenCount) {
+                workingTokens.push("00");
+            }
+            if (workingTokens.length > tokenCount) {
+                workingTokens.length = tokenCount;
+            }
+
+            updateFn(workingTokens);
+
+            const serialized = workingTokens.join("").toUpperCase();
+            const line = "#" + measureText + channel + ":" + serialized;
+            const targetRegex = new RegExp("^#" + measureText + channel + ":", "i");
+            const matchingIndexes = [];
+            lines.forEach((entry, index) => {
+                if (targetRegex.test(entry.trim())) {
+                    matchingIndexes.push(index);
+                }
+            });
+
+            const hasContent = /[1-9A-Z]/.test(serialized.replace(/00/g, ""));
+            if (!hasContent && !keepEmptyLine) {
+                if (matchingIndexes.length) {
+                    const filtered = lines.filter((_, index) => !matchingIndexes.includes(index));
+                    setEditorText(filtered.join("\n"), "라인을 비웠습니다");
+                } else {
+                    setMessage("비울 데이터가 없습니다");
+                }
+                return;
+            }
+
+            if (matchingIndexes.length) {
+                const nextLines = lines.filter((_, index) => index === matchingIndexes[0] || !matchingIndexes.includes(index));
+                nextLines[matchingIndexes[0]] = line;
+                setEditorText(nextLines.join("\n"), "라인을 갱신했습니다");
+                return;
+            }
+
+            let insertIndex = lines.length;
+            for (let index = 0; index < lines.length; index += 1) {
+                const entry = lines[index].trim();
+                const match = entry.match(/^#(\d{3})([0-9A-Z]{2}):/i);
+                if (!match) {
+                    continue;
+                }
+
+                const lineMeasure = parseInt(match[1], 10);
+                const lineChannel = match[2];
+                if (lineMeasure > measure || (lineMeasure === measure && lineChannel > channel)) {
+                    insertIndex = index;
+                    break;
+                }
+            }
+
+            const nextLines = lines.slice();
+            nextLines.splice(insertIndex, 0, line);
+            setEditorText(nextLines.join("\n"), "라인을 추가했습니다");
+        }
+
+        function createEmptyLine() {
+            const measure = Number(measureInput.value) || state.currentMeasure;
+            const channel = channelSelect.value;
+            const tokenCount = Number(resolutionSelect.value);
+            pushUndoSnapshot(state.lastSnapshot);
+            setLineForMeasureChannel(measure, channel, tokenCount, () => {}, true);
+        }
+
+        function clearCurrentLine() {
+            const measure = Number(measureInput.value) || state.currentMeasure;
+            const channel = channelSelect.value;
+            const tokenCount = Number(resolutionSelect.value);
+            pushUndoSnapshot(state.lastSnapshot);
+            setLineForMeasureChannel(measure, channel, tokenCount, (tokens) => {
+                for (let index = 0; index < tokenCount; index += 1) {
+                    tokens[index] = "00";
+                }
+            });
+        }
+
+        function findNearestSlotFromCanvas(y, top, gridHeight, resolution) {
+            const ratio = Math.min(1, Math.max(0, (y - top) / gridHeight));
+            return Math.min(resolution - 1, Math.max(0, Math.floor(ratio * resolution)));
+        }
+
+        function getPreviewHit(event) {
+            const rect = previewCanvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) * (previewCanvas.width / rect.width);
+            const y = (event.clientY - rect.top) * (previewCanvas.height / rect.height);
+            const measureHeight = state.previewMeasureHeight * state.previewZoomY;
+            const layout = getPreviewLayout();
+            const columns = layout.metrics;
+            const baseBottom = previewCanvas.height - 40;
+
+            if (x < 0 || y < 0 || y > baseBottom) {
+                return null;
+            }
+
+            const column = columns.find((entry) => x >= entry.x * state.previewZoomX && x < entry.right * state.previewZoomX);
+            if (!column || !column.editable || !column.channel) {
+                return null;
+            }
+            const measure = Math.max(0, Math.floor((baseBottom - y) / measureHeight));
+            const measureTop = getMeasureTopY(measure, previewCanvas.height);
+            const slot = Math.min(
+                state.guiResolution - 1,
+                Math.max(0, Math.floor(((measureTop + measureHeight) - y) / (measureHeight / state.guiResolution)))
+            );
+            return { column, measure, slot };
+        }
+
+        function getPreviewColumnHit(event) {
+            const rect = previewCanvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) * (previewCanvas.width / rect.width);
+            const layout = getPreviewLayout();
+            const column = layout.metrics.find((entry) => x >= entry.x * state.previewZoomX && x < entry.right * state.previewZoomX);
+            if (!column || !column.editable || !column.channel) {
+                return null;
+            }
+            return column;
+        }
+
+        function applyPreviewEdit(hit, forceValue = null) {
+            if (!hit) {
+                return;
+            }
+
+            const { column, measure, slot } = hit;
+            const channel = resolveEditableChannel(column);
+            if (!channel) {
+                return;
+            }
+
+            state.currentMeasure = measure;
+            state.selectedChannel = channel;
+            state.selectedSlot = slot;
+            measureInput.value = String(measure);
+            channelSelect.value = channel;
+            updateSlotDisplay();
+
+            setLineForMeasureChannel(measure, channel, state.guiResolution, (tokens) => {
+                const currentValue = tokens[slot] || "00";
+                const nextValue = sanitizeObjectValue(objectValueInput.value);
+                if (forceValue !== null) {
+                    tokens[slot] = forceValue;
+                } else {
+                    tokens[slot] = currentValue === "00" ? nextValue : "00";
+                }
+            });
+        }
+
+        function handleNotePointerDown(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const note = event.target.closest(".note-block");
+            if (!note) {
+                return;
+            }
+            state.dragNote = {
+                element: note,
+                measure: Number(note.dataset.measure),
+                channel: String(note.dataset.channel),
+                slot: Number(note.dataset.slot),
+                tokenCount: Number(note.dataset.tokenCount),
+                token: String(note.dataset.token),
+            };
+            note.classList.add("dragging");
+        }
+
+        function handlePreviewPointerMove(event) {
+            if (!state.dragNote) {
+                return;
+            }
+
+            const rect = previewOverlay.getBoundingClientRect();
+            let x = event.clientX - rect.left;
+            let y = event.clientY - rect.top;
+
+            if (state.snapToGrid) {
+                const hit = getPreviewHit(event);
+                if (hit) {
+                    const noteRect = getNoteBlockRect(hit.column, state.lockVerticalDrag ? state.dragNote.measure : hit.measure, state.lockVerticalDrag ? state.dragNote.slot : hit.slot, state.guiResolution, previewCanvas.height);
+                    x = noteRect.x + noteRect.width / 2;
+                    y = noteRect.y + noteRect.height / 2;
+                }
+            }
+
+            if (state.lockVerticalDrag) {
+                y = parseFloat(state.dragNote.element.style.top || 0) + state.dragNote.element.offsetHeight / 2;
+            }
+
+            state.dragNote.element.style.transform = "translate(" + Math.round(x - state.dragNote.element.offsetWidth / 2 - parseFloat(state.dragNote.element.style.left || 0)) + "px, " + Math.round(y - state.dragNote.element.offsetHeight / 2 - parseFloat(state.dragNote.element.style.top || 0)) + "px)";
+        }
+
+        function handlePreviewPointerUp(event) {
+            if (!state.dragNote) {
+                return;
+            }
+
+            const dragging = state.dragNote;
+            dragging.element.classList.remove("dragging");
+            dragging.element.style.transform = "";
+            const targetHit = state.lockVerticalDrag ? (() => {
+                const column = getPreviewColumnHit(event);
+                return column ? { column, measure: dragging.measure, slot: dragging.slot } : null;
+            })() : getPreviewHit(event);
+            if (targetHit) {
+                moveExistingNote(dragging, targetHit);
+            } else {
+                scheduleRenderPreview();
+            }
+            state.dragNote = null;
+        }
+
+        function handlePreviewDoubleClick(event) {
+            event.preventDefault();
+        }
+
+        function toggleEditorPanel() {
+            state.editorVisible = !state.editorVisible;
+            updateStatus();
+            scheduleRenderPreview();
+        }
+
+        function syncToolState() {
+            state.currentMeasure = Math.max(0, Number(measureInput.value) || 0);
+            state.guiResolution = Number(resolutionSelect.value) || 32;
+            state.selectedChannel = channelSelect.value || state.selectedChannel;
+            state.selectedValue = sanitizeObjectValue(objectValueInput.value);
+            state.editMode = editModeSelect.value || "normal";
+            const nextPreviewZoomY = Math.min(8, Math.max(0.5, Number(verticalZoomInput.value || verticalZoomRange.value) || 1));
+            const nextPreviewZoomX = Math.min(4, Math.max(0.5, Number(horizontalZoomInput.value || horizontalZoomRange.value) || 1));
+            state.previewZoomY = nextPreviewZoomY;
+            state.previewZoomX = nextPreviewZoomX;
+            state.snapToGrid = snapToGridCheckbox.checked;
+            state.lockVerticalDrag = lockVerticalCheckbox.checked;
+            verticalZoomInput.value = String(state.previewZoomY);
+            verticalZoomRange.value = String(state.previewZoomY);
+            horizontalZoomInput.value = String(state.previewZoomX);
+            horizontalZoomRange.value = String(state.previewZoomX);
+            objectValueInput.value = state.selectedValue;
+            updateSlotDisplay();
+            scheduleRenderPreview();
+            scrollPreviewToMeasure(state.currentMeasure);
+        }
+
+        editor.addEventListener("input", () => {
+            if (!state.suppressHistory) {
+                pushUndoSnapshot(state.lastSnapshot);
+                state.lastSnapshot = createSnapshot();
+            }
+            afterEditorChange();
+        });
+
+        editor.addEventListener("click", updateCursorStatus);
+        editor.addEventListener("keyup", () => {
+            state.lastSnapshot = createSnapshot();
+            updateCursorStatus();
+        });
+        editor.addEventListener("scroll", syncScroll);
+        editor.addEventListener("select", updateCursorStatus);
+
+        editor.addEventListener("keydown", async (event) => {
+            if (event.key === "Tab") {
+                event.preventDefault();
+                pushUndoSnapshot(state.lastSnapshot);
+                replaceSelection("    ");
+                setMessage("들여쓰기를 삽입했습니다");
+                return;
+            }
+
+            if (event.ctrlKey || event.metaKey) {
+                const key = event.key.toLowerCase();
+
+                if (key === "s" && event.shiftKey) {
+                    event.preventDefault();
+                    await saveFileAs();
+                    return;
+                }
+
+                if (key === "s") {
+                    event.preventDefault();
+                    await saveFile();
+                    return;
+                }
+
+                if (key === "o") {
+                    event.preventDefault();
+                    fileInput.click();
+                    return;
+                }
+
+                if (key === "0") {
+                    event.preventDefault();
+                    resetPreviewZoom();
+                    return;
+                }
+
+                if (key === "z" && !event.shiftKey) {
+                    event.preventDefault();
+                    undoEdit();
+                    return;
+                }
+
+                if (key === "y" || (key === "z" && event.shiftKey)) {
+                    event.preventDefault();
+                    redoEdit();
+                }
+            }
+        });
+
+        window.addEventListener("beforeunload", (event) => {
+            if (!isDirty()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = "";
+        });
+
+        fileInput.addEventListener("change", openFile);
+        newButton.addEventListener("click", newDocument);
+        saveButton.addEventListener("click", saveFile);
+        saveAsButton.addEventListener("click", saveFileAs);
+        undoButton.addEventListener("click", undoEdit);
+        redoButton.addEventListener("click", redoEdit);
+        copyButton.addEventListener("click", copySelection);
+        cutButton.addEventListener("click", cutSelection);
+        pasteButton.addEventListener("click", pasteClipboard);
+        toggleEditorButton.addEventListener("click", toggleEditorPanel);
+        insertSelect.addEventListener("change", (event) => insertTemplate(event.target.value));
+        prevMeasureButton.addEventListener("click", () => {
+            state.currentMeasure = Math.max(0, state.currentMeasure - 1);
+            measureInput.value = String(state.currentMeasure);
+            updateSlotDisplay();
+            scheduleRenderPreview();
+            scrollPreviewToMeasure(state.currentMeasure);
+        });
+        nextMeasureButton.addEventListener("click", () => {
+            state.currentMeasure += 1;
+            measureInput.value = String(state.currentMeasure);
+            updateSlotDisplay();
+            scheduleRenderPreview();
+            scrollPreviewToMeasure(state.currentMeasure);
+        });
+        previewScroll.addEventListener("scroll", () => {
+            const baseBottom = previewCanvas.height - 40;
+            const centerY = previewScroll.scrollTop + previewScroll.clientHeight * 0.5;
+            const scaledMeasureHeight = state.previewMeasureHeight * state.previewZoomY;
+            const measure = Math.max(0, Math.floor((baseBottom - centerY) / scaledMeasureHeight));
+            syncHorizontalScroll("grid");
+            if (measure !== state.currentMeasure) {
+                state.currentMeasure = measure;
+                measureInput.value = String(measure);
+                updateSlotDisplay();
+            }
+        });
+        previewHScroll.addEventListener("scroll", () => {
+            syncHorizontalScroll("bottom");
+        });
+        previewScroll.addEventListener("wheel", (event) => {
+            if (!event.ctrlKey) {
+                return;
+            }
+
+            event.preventDefault();
+            changePreviewZoom(event.deltaY < 0 ? 1 : -1);
+        }, { passive: false });
+        measureInput.addEventListener("input", syncToolState);
+        resolutionSelect.addEventListener("change", syncToolState);
+        channelSelect.addEventListener("change", syncToolState);
+        objectValueInput.addEventListener("input", syncToolState);
+        editModeSelect.addEventListener("change", syncToolState);
+        verticalZoomRange.addEventListener("input", () => {
+            verticalZoomInput.value = verticalZoomRange.value;
+            syncToolState();
+        });
+        verticalZoomInput.addEventListener("input", syncToolState);
+        horizontalZoomRange.addEventListener("input", () => {
+            horizontalZoomInput.value = horizontalZoomRange.value;
+            syncToolState();
+        });
+        horizontalZoomInput.addEventListener("input", syncToolState);
+        snapToGridCheckbox.addEventListener("change", syncToolState);
+        lockVerticalCheckbox.addEventListener("change", syncToolState);
+        insertLineButton.addEventListener("click", createEmptyLine);
+        clearLineButton.addEventListener("click", clearCurrentLine);
+        previewCanvas.addEventListener("dblclick", handlePreviewDoubleClick);
+        window.addEventListener("pointermove", handlePreviewPointerMove);
+        window.addEventListener("pointerup", handlePreviewPointerUp);
+        previewCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
+        previewOverlay.addEventListener("pointerdown", handleNotePointerDown);
+
+        loadText(DEFAULT_TEXT, "untitled.bms", null);
+        syncToolState();
+        scrollPreviewToMeasure(state.currentMeasure);
+        setMessage("준비됨");
+    </script>
+</body>
+
+</html>
