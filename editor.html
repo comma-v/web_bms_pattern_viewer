@@ -356,7 +356,8 @@
             border-radius: 0;
             background: #050505;
             cursor: crosshair;
-            position: relative;
+            position: absolute;
+            left: 0;
             z-index: 0;
         }
 
@@ -369,7 +370,7 @@
 
         #previewOverlay {
             position: absolute;
-            inset: 0;
+            left: 0;
             pointer-events: none;
             z-index: 1;
             background: transparent;
@@ -747,8 +748,21 @@
                             <input type="number" id="measureInput" min="0" value="1">
                         </label>
                         <label class="field">
-                            <span>해상도</span>
+                            <span>노트 해상도</span>
                             <select id="resolutionSelect">
+                                <option value="16">16</option>
+                                <option value="32" selected>32</option>
+                                <option value="48">48</option>
+                                <option value="64">64</option>
+                                <option value="96">96</option>
+                                <option value="192">192</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>격자 간격</span>
+                            <select id="gridResolutionSelect">
+                                <option value="4">4</option>
+                                <option value="8">8</option>
                                 <option value="16">16</option>
                                 <option value="32" selected>32</option>
                                 <option value="48">48</option>
@@ -854,6 +868,7 @@
         const nextMeasureButton = document.getElementById("nextMeasureButton");
         const measureInput = document.getElementById("measureInput");
         const resolutionSelect = document.getElementById("resolutionSelect");
+        const gridResolutionSelect = document.getElementById("gridResolutionSelect");
         const channelSelect = document.getElementById("channelSelect");
         const objectValueInput = document.getElementById("objectValueInput");
         const editModeSelect = document.getElementById("editModeSelect");
@@ -944,6 +959,7 @@
             chartModel: null,
             currentMeasure: 1,
             guiResolution: 32,
+            gridResolution: 32,
             selectedChannel: "11",
             selectedSlot: 0,
             selectedValue: "01",
@@ -962,6 +978,8 @@
             snapToGrid: true,
             lockVerticalDrag: false,
             renderQueued: false,
+            previewRenderTop: 0,
+            previewRenderHeight: 1,
         };
 
         function scheduleRenderPreview() {
@@ -1192,15 +1210,15 @@
                 return;
             }
 
-            const centerRatioX = (previewScroll.scrollLeft + previewScroll.clientWidth * 0.5) / Math.max(previewCanvas.width, 1);
-            const centerRatioY = (previewScroll.scrollTop + previewScroll.clientHeight * 0.5) / Math.max(previewCanvas.height, 1);
+            const centerRatioX = (previewScroll.scrollLeft + previewScroll.clientWidth * 0.5) / Math.max(previewStage.clientWidth, 1);
+            const centerRatioY = (previewScroll.scrollTop + previewScroll.clientHeight * 0.5) / Math.max(previewStage.clientHeight, 1);
             state.previewZoomY = nextZoom;
             verticalZoomRange.value = String(state.previewZoomY);
             verticalZoomInput.value = state.previewZoomY.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
             renderPreview();
-            previewScroll.scrollLeft = Math.max(0, previewCanvas.width * centerRatioX - previewScroll.clientWidth * 0.5);
+            previewScroll.scrollLeft = Math.max(0, previewStage.clientWidth * centerRatioX - previewScroll.clientWidth * 0.5);
             previewHScroll.scrollLeft = previewScroll.scrollLeft;
-            previewScroll.scrollTop = Math.max(0, previewCanvas.height * centerRatioY - previewScroll.clientHeight * 0.5);
+            previewScroll.scrollTop = Math.max(0, previewStage.clientHeight * centerRatioY - previewScroll.clientHeight * 0.5);
             laneHeader.scrollLeft = previewScroll.scrollLeft;
             setMessage("높이 간격: " + state.previewZoomY.toFixed(1) + "x");
         }
@@ -1588,8 +1606,8 @@
             const laneInset = Math.max(1, Math.floor(scaledColumnWidth * 0.04));
             const noteWidth = Math.max(18, scaledColumnWidth - laneInset * 2);
             const noteHeight = 12;
-            const lineY = topY + scaledMeasureHeight - ((tokenIndex + 1) * slotHeight);
-            const noteTop = Math.round(lineY - noteHeight - 1);
+            const centerY = topY + scaledMeasureHeight - ((tokenIndex + 0.5) * slotHeight);
+            const noteTop = Math.round(centerY - noteHeight * 0.5);
 
             return {
                 x: scaledX + laneInset,
@@ -1657,47 +1675,80 @@
             measureInput.value = String(state.currentMeasure);
         }
 
+        function getVisibleRenderWindow(totalHeight, measureHeight, leadIn) {
+            const viewportHeight = Math.max(previewScroll.clientHeight || 0, 1);
+            const buffer = Math.max(measureHeight * 2, leadIn * 0.5, 160);
+            const scrollTop = previewScroll.scrollTop;
+            const renderTop = Math.max(0, Math.floor(scrollTop - buffer));
+            const renderBottom = Math.min(totalHeight, Math.ceil(scrollTop + viewportHeight + buffer));
+
+            return {
+                renderTop,
+                renderBottom,
+                renderHeight: Math.max(1, renderBottom - renderTop),
+            };
+        }
+
+        function getRenderedMeasureRange(totalMeasures, totalHeight, measureHeight, renderTop, renderBottom) {
+            const baseBottom = totalHeight - 40;
+            const start = Math.max(0, Math.floor((baseBottom - renderBottom) / measureHeight) - 1);
+            const end = Math.min(totalMeasures - 1, Math.ceil((baseBottom - renderTop) / measureHeight));
+            return { start, end };
+        }
+
         function renderPreview() {
             const ctx = previewContext;
             const layout = getPreviewLayout();
             const columns = layout.columns;
             const metrics = layout.metrics;
             const width = Math.round(layout.width * state.previewZoomX);
-            const marginLeft = 0;
             const marginTop = 22;
-            const resolution = state.guiResolution;
+            const resolution = state.gridResolution;
             const measureHeight = state.previewMeasureHeight * state.previewZoomY;
             const leadIn = state.previewLeadIn * state.previewZoomY;
             const maxMeasure = Math.max(state.currentMeasure, state.chartModel ? state.chartModel.maxMeasure : 0, 0);
             const totalMeasures = maxMeasure + 3;
             const totalHeight = leadIn + totalMeasures * measureHeight + 40;
+            const { renderTop, renderBottom, renderHeight } = getVisibleRenderWindow(totalHeight, measureHeight, leadIn);
+            const renderedMeasures = getRenderedMeasureRange(totalMeasures, totalHeight, measureHeight, renderTop, renderBottom);
+            state.previewRenderTop = renderTop;
+            state.previewRenderHeight = renderHeight;
             previewCanvas.width = width;
-            previewCanvas.height = totalHeight;
+            previewCanvas.height = renderHeight;
+            previewCanvas.style.top = renderTop + "px";
             previewStage.style.width = width + "px";
             previewStage.style.height = totalHeight + "px";
             previewOverlay.style.width = width + "px";
-            previewOverlay.style.height = totalHeight + "px";
+            previewOverlay.style.height = renderHeight + "px";
+            previewOverlay.style.top = renderTop + "px";
             previewOverlay.innerHTML = "";
             state.noteElements = new Map();
             previewHScrollInner.style.width = width + "px";
-            const height = previewCanvas.height;
+            const height = totalHeight;
             renderLaneHeader(columns);
 
-            ctx.clearRect(0, 0, width, height);
+            ctx.clearRect(0, 0, width, renderHeight);
 
             ctx.fillStyle = "#050505";
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillRect(0, 0, width, renderHeight);
 
             ctx.fillStyle = "rgba(255,255,255,0.012)";
-            ctx.fillRect(0, marginTop, width, leadIn - marginTop);
+            const leadInTop = Math.max(0, marginTop - renderTop);
+            const leadInBottom = Math.min(renderHeight, leadIn - renderTop);
+            if (leadInBottom > leadInTop) {
+                ctx.fillRect(0, leadInTop, width, leadInBottom - leadInTop);
+            }
 
             ctx.fillStyle = "#5eead4";
             ctx.textAlign = "left";
             ctx.font = "12px Consolas";
-            ctx.fillText("lead-in", 8, marginTop + 18);
+            if (leadInBottom > 0) {
+                ctx.fillText("lead-in", 8, Math.max(18, marginTop + 18 - renderTop));
+            }
 
-            for (let measure = 0; measure < totalMeasures; measure += 1) {
+            for (let measure = renderedMeasures.start; measure <= renderedMeasures.end; measure += 1) {
                 const topY = getMeasureTopY(measure, height);
+                const drawTopY = topY - renderTop;
                 const gridHeight = measureHeight;
 
                 metrics.forEach((column) => {
@@ -1705,14 +1756,14 @@
                     ctx.fillStyle = fillStyle;
                     const scaledX = column.x * state.previewZoomX;
                     const scaledWidth = column.width * state.previewZoomX;
-                    ctx.fillRect(scaledX, topY, scaledWidth, gridHeight);
+                    ctx.fillRect(scaledX, drawTopY, scaledWidth, gridHeight);
                     ctx.strokeStyle = "rgba(120, 120, 120, 0.32)";
-                    ctx.strokeRect(scaledX, topY, scaledWidth, gridHeight);
+                    ctx.strokeRect(scaledX, drawTopY, scaledWidth, gridHeight);
                 });
 
                 for (let slot = 0; slot <= resolution; slot += 1) {
-                    const y = topY + (slot / resolution) * gridHeight;
-                    ctx.strokeStyle = slot % 4 === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)";
+                    const y = drawTopY + (slot / resolution) * gridHeight;
+                    ctx.strokeStyle = slot % Math.max(1, resolution / 4) === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)";
                     ctx.beginPath();
                     ctx.moveTo(0, y);
                     ctx.lineTo(width, y);
@@ -1723,7 +1774,7 @@
                 ctx.fillStyle = measure === state.currentMeasure ? "#24d5ff" : "#24d5ff";
                 ctx.font = "bold 14px Consolas";
                 const measureColumn = metrics[0];
-                ctx.fillText("[" + formatMeasure(measure) + "]", (measureColumn.right * state.previewZoomX) - 6, topY + 20);
+                ctx.fillText("[" + formatMeasure(measure) + "]", (measureColumn.right * state.previewZoomX) - 6, drawTopY + 20);
             }
 
             if (!state.chartModel) {
@@ -1734,6 +1785,9 @@
             const unmatchedEvents = [];
             const noteFragment = document.createDocumentFragment();
             state.chartModel.eventMap.forEach((event) => {
+                if (event.measure < renderedMeasures.start || event.measure > renderedMeasures.end) {
+                    return;
+                }
                 const column = findColumnForEvent(metrics, event.channel);
                 if (!column) {
                     if (event.tokens.some((token) => token !== "00")) {
@@ -1749,19 +1803,23 @@
                         return;
                     }
                     const rect = getNoteBlockRect(column, event.measure, index, tokenCount, height);
+                    const drawY = rect.y - renderTop;
+                    if (drawY + rect.height < 0 || drawY > renderHeight) {
+                        return;
+                    }
                     renderedEvents.push({ measure: event.measure, channel: event.channel, token });
                     ctx.fillStyle = color;
-                    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+                    ctx.fillRect(rect.x, drawY, rect.width, rect.height);
                     ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
                     ctx.font = "10px Arial";
                     ctx.textAlign = "center";
                     const label = getEventDisplayLabel(state.chartModel, event.channel, token);
-                    ctx.fillText(label, rect.x + rect.width / 2, rect.y + Math.min(rect.height - 3, rect.height / 2 + 3));
+                    ctx.fillText(label, rect.x + rect.width / 2, drawY + Math.min(rect.height - 3, rect.height / 2 + 3));
 
                     const note = document.createElement("div");
                     note.className = "note-block";
                     note.style.left = rect.x + "px";
-                    note.style.top = rect.y + "px";
+                    note.style.top = drawY + "px";
                     note.style.width = rect.width + "px";
                     note.style.height = rect.height + "px";
                     note.style.background = color;
@@ -1791,9 +1849,10 @@
             const selectedColumn = findColumnForEvent(metrics, state.selectedChannel) || metrics.find((column) => column.channel === state.selectedChannel || resolveEditableChannel(column) === state.selectedChannel);
             if (selectedColumn) {
                 const rect = getNoteBlockRect(selectedColumn, state.currentMeasure, state.selectedSlot, resolution, height);
+                const drawY = rect.y - renderTop;
                 ctx.strokeStyle = "#22c55e";
                 ctx.lineWidth = 2;
-                ctx.strokeRect(rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2);
+                ctx.strokeRect(rect.x - 1, drawY - 1, rect.width + 2, rect.height + 2);
                 ctx.lineWidth = 1;
             }
 
@@ -1801,7 +1860,7 @@
         }
 
         function scrollPreviewToMeasure(measure) {
-            const canvasHeight = previewCanvas.height;
+            const canvasHeight = previewStage.clientHeight;
             const targetTop = Math.max(0, getMeasureTopY(measure, canvasHeight) - 24);
             previewScroll.scrollTop = targetTop;
             requestAnimationFrame(() => {
@@ -2053,7 +2112,7 @@
             toolHint.textContent = state.lockVerticalDrag
                 ? "클릭: 노트 추가/삭제 | 드래그: 가로 이동"
                 : "클릭: 노트 추가/삭제 | 드래그: 위치 이동";
-            previewLegend.textContent = (state.snapToGrid ? "격자 맞춤 ON" : "격자 맞춤 OFF") + " / 텍스트 패널은 좌측 오버레이로 열립니다.";
+            previewLegend.textContent = "격자 " + state.gridResolution + " / " + (state.snapToGrid ? "격자 맞춤 ON" : "격자 맞춤 OFF") + " / 텍스트 패널은 좌측 오버레이로 열립니다.";
         }
 
         function setEditorText(text, message) {
@@ -2184,9 +2243,9 @@
                 {
                     measure: targetMeasure,
                     channel: targetChannel,
-                    tokenCount: Math.max(state.guiResolution, noteData.tokenCount),
+                    tokenCount: Math.max(state.guiResolution, state.gridResolution, noteData.tokenCount),
                     apply(tokens) {
-                        while (tokens.length < state.guiResolution) {
+                        while (tokens.length < Math.max(state.guiResolution, state.gridResolution)) {
                             tokens.push("00");
                         }
                         tokens[targetSlot] = noteData.token;
@@ -2288,11 +2347,11 @@
         function getPreviewHit(event) {
             const rect = previewCanvas.getBoundingClientRect();
             const x = (event.clientX - rect.left) * (previewCanvas.width / rect.width);
-            const y = (event.clientY - rect.top) * (previewCanvas.height / rect.height);
+            const y = state.previewRenderTop + (event.clientY - rect.top) * (previewCanvas.height / rect.height);
             const measureHeight = state.previewMeasureHeight * state.previewZoomY;
             const layout = getPreviewLayout();
             const columns = layout.metrics;
-            const baseBottom = previewCanvas.height - 40;
+            const baseBottom = previewStage.clientHeight - 40;
 
             if (x < 0 || y < 0 || y > baseBottom) {
                 return null;
@@ -2303,10 +2362,10 @@
                 return null;
             }
             const measure = Math.max(0, Math.floor((baseBottom - y) / measureHeight));
-            const measureTop = getMeasureTopY(measure, previewCanvas.height);
+            const measureTop = getMeasureTopY(measure, previewStage.clientHeight);
             const slot = Math.min(
-                state.guiResolution - 1,
-                Math.max(0, Math.floor(((measureTop + measureHeight) - y) / (measureHeight / state.guiResolution)))
+                state.gridResolution - 1,
+                Math.max(0, Math.floor(((measureTop + measureHeight) - y) / (measureHeight / state.gridResolution)))
             );
             return { column, measure, slot };
         }
@@ -2340,7 +2399,7 @@
             channelSelect.value = channel;
             updateSlotDisplay();
 
-            setLineForMeasureChannel(measure, channel, state.guiResolution, (tokens) => {
+            setLineForMeasureChannel(measure, channel, Math.max(state.guiResolution, state.gridResolution), (tokens) => {
                 const currentValue = tokens[slot] || "00";
                 const nextValue = sanitizeObjectValue(objectValueInput.value);
                 if (forceValue !== null) {
@@ -2381,7 +2440,8 @@
             if (state.snapToGrid) {
                 const hit = getPreviewHit(event);
                 if (hit) {
-                    const noteRect = getNoteBlockRect(hit.column, state.lockVerticalDrag ? state.dragNote.measure : hit.measure, state.lockVerticalDrag ? state.dragNote.slot : hit.slot, state.guiResolution, previewCanvas.height);
+                    const noteRect = getNoteBlockRect(hit.column, state.lockVerticalDrag ? state.dragNote.measure : hit.measure, state.lockVerticalDrag ? state.dragNote.slot : hit.slot, state.guiResolution, previewStage.clientHeight);
+                    noteRect.y -= state.previewRenderTop;
                     x = noteRect.x + noteRect.width / 2;
                     y = noteRect.y + noteRect.height / 2;
                 }
@@ -2427,6 +2487,7 @@
         function syncToolState() {
             state.currentMeasure = Math.max(0, Number(measureInput.value) || 0);
             state.guiResolution = Number(resolutionSelect.value) || 32;
+            state.gridResolution = Number(gridResolutionSelect.value) || state.guiResolution;
             state.selectedChannel = channelSelect.value || state.selectedChannel;
             state.selectedValue = sanitizeObjectValue(objectValueInput.value);
             state.editMode = editModeSelect.value || "normal";
@@ -2436,6 +2497,7 @@
             state.previewZoomX = nextPreviewZoomX;
             state.snapToGrid = snapToGridCheckbox.checked;
             state.lockVerticalDrag = lockVerticalCheckbox.checked;
+            gridResolutionSelect.value = String(state.gridResolution);
             verticalZoomInput.value = String(state.previewZoomY);
             verticalZoomRange.value = String(state.previewZoomY);
             horizontalZoomInput.value = String(state.previewZoomX);
@@ -2545,11 +2607,12 @@
             scrollPreviewToMeasure(state.currentMeasure);
         });
         previewScroll.addEventListener("scroll", () => {
-            const baseBottom = previewCanvas.height - 40;
+            const baseBottom = previewStage.clientHeight - 40;
             const centerY = previewScroll.scrollTop + previewScroll.clientHeight * 0.5;
             const scaledMeasureHeight = state.previewMeasureHeight * state.previewZoomY;
             const measure = Math.max(0, Math.floor((baseBottom - centerY) / scaledMeasureHeight));
             syncHorizontalScroll("grid");
+            scheduleRenderPreview();
             if (measure !== state.currentMeasure) {
                 state.currentMeasure = measure;
                 measureInput.value = String(measure);
@@ -2569,6 +2632,7 @@
         }, { passive: false });
         measureInput.addEventListener("input", syncToolState);
         resolutionSelect.addEventListener("change", syncToolState);
+        gridResolutionSelect.addEventListener("change", syncToolState);
         channelSelect.addEventListener("change", syncToolState);
         objectValueInput.addEventListener("input", syncToolState);
         editModeSelect.addEventListener("change", syncToolState);
