@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="ko">
 
 <head>
@@ -20,7 +20,7 @@
 
         body {
             height: 100vh;
-            background: #dcdcdc;
+            background: #050505;
             color: #111;
             font-family: "Malgun Gothic", "Noto Sans KR", Arial, sans-serif;
             overflow: hidden;
@@ -30,7 +30,7 @@
             height: 100vh;
             display: grid;
             grid-template-rows: 28px 28px 38px 1fr 28px;
-            background: #f3f3f3;
+            background: #050505;
             overflow: hidden;
         }
 
@@ -177,6 +177,7 @@
             border-right: 1px solid #3f3f3f;
             box-shadow: 8px 0 18px rgba(0, 0, 0, 0.35);
             overflow: hidden;
+            isolation: isolate;
         }
 
         #workspace.editor-hidden #editorPane {
@@ -209,6 +210,7 @@
             outline: none;
             tab-size: 4;
             font: 12px/1.5 Consolas, "Courier New", monospace;
+            color-scheme: dark;
         }
 
         #sidePane {
@@ -348,24 +350,61 @@
             margin-bottom: 1px;
         }
 
-        #previewCanvas {
-            width: auto;
-            height: auto;
-            display: block;
-            border: 0;
-            border-radius: 0;
-            background: #050505;
-            cursor: crosshair;
-            position: absolute;
-            left: 0;
-            z-index: 0;
-        }
-
         #previewStage {
             position: relative;
             width: max-content;
             min-width: 100%;
             background: #050505;
+            cursor: crosshair;
+            overscroll-behavior: contain;
+        }
+
+        #previewGrid {
+            position: absolute;
+            left: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .preview-measure {
+            position: absolute;
+            left: 0;
+        }
+
+        .preview-cell {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            border: 1px solid rgba(120, 120, 120, 0.32);
+            box-sizing: border-box;
+        }
+
+        .preview-grid-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: rgba(190,190,190,0.22);
+        }
+
+        .preview-grid-line.major {
+            background: rgba(210,210,210,0.34);
+        }
+
+        .preview-measure-label {
+            position: absolute;
+            right: 6px;
+            top: 18px;
+            font: bold 14px/1 Consolas;
+            color: #24d5ff;
+            pointer-events: none;
+        }
+
+        .preview-selection {
+            position: absolute;
+            border: 2px solid #22c55e;
+            box-sizing: border-box;
+            pointer-events: none;
         }
 
         #previewOverlay {
@@ -390,6 +429,9 @@
             white-space: nowrap;
             pointer-events: auto;
             cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
         }
 
         .note-block.dragging {
@@ -403,11 +445,12 @@
             height: 100%;
             overflow-x: hidden;
             overflow-y: scroll;
-            background: #050505;
+            background: #000000;
             border-top: 1px solid #2a2a2a;
             border-bottom: 0;
             scrollbar-color: #8a8a8a #d9d9d9;
             scrollbar-width: auto;
+            overscroll-behavior: contain;
         }
 
         #previewHScroll {
@@ -477,7 +520,7 @@
             min-height: 0;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr) 16px;
-            background: #050505;
+            background: #000000;
             border-right: 1px solid #6f6f6f;
             overflow: hidden;
         }
@@ -486,7 +529,7 @@
             display: flex;
             align-items: center;
             gap: 0;
-            background: #050505;
+            background: #000000;
             color: #00d02a;
             border-bottom: 1px solid #1e1e1e;
             font: bold 11px/1 Consolas, monospace;
@@ -716,7 +759,7 @@
                 </div>
                 <div id="previewScroll">
                     <div id="previewStage">
-                        <canvas id="previewCanvas" width="1500" height="900"></canvas>
+                        <div id="previewGrid"></div>
                         <div id="previewOverlay"></div>
                     </div>
                 </div>
@@ -857,13 +900,12 @@
         const insertSelect = document.getElementById("insertSelect");
         const workspace = document.getElementById("workspace");
         const laneHeader = document.getElementById("laneHeader");
-        const previewCanvas = document.getElementById("previewCanvas");
+        const previewGrid = document.getElementById("previewGrid");
         const previewStage = document.getElementById("previewStage");
         const previewOverlay = document.getElementById("previewOverlay");
         const previewScroll = document.getElementById("previewScroll");
         const previewHScroll = document.getElementById("previewHScroll");
         const previewHScrollInner = document.getElementById("previewHScrollInner");
-        const previewContext = previewCanvas.getContext("2d");
         const prevMeasureButton = document.getElementById("prevMeasureButton");
         const nextMeasureButton = document.getElementById("nextMeasureButton");
         const measureInput = document.getElementById("measureInput");
@@ -1116,6 +1158,20 @@
                 return toLongChannel(column.channel);
             }
             return column.channel;
+        }
+
+        function resolveMoveTargetChannel(column, sourceChannel) {
+            if (!column || !column.channel) {
+                return null;
+            }
+            if (column.type !== "note") {
+                return column.channel;
+            }
+
+            const sourceText = String(sourceChannel || "").toUpperCase();
+            const sourceNumeric = parseInt(sourceText, 10);
+            const isLongNoteChannel = (sourceNumeric >= 51 && sourceNumeric <= 59) || (sourceNumeric >= 61 && sourceNumeric <= 69);
+            return isLongNoteChannel ? toLongChannel(column.channel) : column.channel;
         }
 
         function getMeasureTopY(measure, canvasHeight) {
@@ -1606,8 +1662,8 @@
             const laneInset = Math.max(1, Math.floor(scaledColumnWidth * 0.04));
             const noteWidth = Math.max(18, scaledColumnWidth - laneInset * 2);
             const noteHeight = 12;
-            const centerY = topY + scaledMeasureHeight - ((tokenIndex + 0.5) * slotHeight);
-            const noteTop = Math.round(centerY - noteHeight * 0.5);
+            const lineY = topY + scaledMeasureHeight - ((tokenIndex + 1) * slotHeight);
+            const noteTop = Math.round(lineY - noteHeight - 1);
 
             return {
                 x: scaledX + laneInset,
@@ -1697,7 +1753,6 @@
         }
 
         function renderPreview() {
-            const ctx = previewContext;
             const layout = getPreviewLayout();
             const columns = layout.columns;
             const metrics = layout.metrics;
@@ -1713,69 +1768,78 @@
             const renderedMeasures = getRenderedMeasureRange(totalMeasures, totalHeight, measureHeight, renderTop, renderBottom);
             state.previewRenderTop = renderTop;
             state.previewRenderHeight = renderHeight;
-            previewCanvas.width = width;
-            previewCanvas.height = renderHeight;
-            previewCanvas.style.top = renderTop + "px";
             previewStage.style.width = width + "px";
             previewStage.style.height = totalHeight + "px";
+            previewGrid.style.width = width + "px";
+            previewGrid.style.height = renderHeight + "px";
+            previewGrid.style.top = renderTop + "px";
             previewOverlay.style.width = width + "px";
             previewOverlay.style.height = renderHeight + "px";
             previewOverlay.style.top = renderTop + "px";
+            previewGrid.innerHTML = "";
             previewOverlay.innerHTML = "";
             state.noteElements = new Map();
             previewHScrollInner.style.width = width + "px";
             const height = totalHeight;
             renderLaneHeader(columns);
 
-            ctx.clearRect(0, 0, width, renderHeight);
-
-            ctx.fillStyle = "#050505";
-            ctx.fillRect(0, 0, width, renderHeight);
-
-            ctx.fillStyle = "rgba(255,255,255,0.012)";
+            const gridFragment = document.createDocumentFragment();
+            const noteFragment = document.createDocumentFragment();
             const leadInTop = Math.max(0, marginTop - renderTop);
             const leadInBottom = Math.min(renderHeight, leadIn - renderTop);
             if (leadInBottom > leadInTop) {
-                ctx.fillRect(0, leadInTop, width, leadInBottom - leadInTop);
-            }
+                const leadInBlock = document.createElement("div");
+                leadInBlock.style.position = "absolute";
+                leadInBlock.style.left = "0";
+                leadInBlock.style.top = leadInTop + "px";
+                leadInBlock.style.width = width + "px";
+                leadInBlock.style.height = (leadInBottom - leadInTop) + "px";
+                leadInBlock.style.background = "rgba(255,255,255,0.012)";
+                gridFragment.appendChild(leadInBlock);
 
-            ctx.fillStyle = "#5eead4";
-            ctx.textAlign = "left";
-            ctx.font = "12px Consolas";
-            if (leadInBottom > 0) {
-                ctx.fillText("lead-in", 8, Math.max(18, marginTop + 18 - renderTop));
+                const leadInLabel = document.createElement("div");
+                leadInLabel.style.position = "absolute";
+                leadInLabel.style.left = "8px";
+                leadInLabel.style.top = Math.max(18, marginTop + 18 - renderTop) + "px";
+                leadInLabel.style.font = "12px Consolas";
+                leadInLabel.style.color = "#5eead4";
+                leadInLabel.textContent = "lead-in";
+                gridFragment.appendChild(leadInLabel);
             }
 
             for (let measure = renderedMeasures.start; measure <= renderedMeasures.end; measure += 1) {
                 const topY = getMeasureTopY(measure, height);
                 const drawTopY = topY - renderTop;
                 const gridHeight = measureHeight;
-
+                const measureElement = document.createElement("div");
+                measureElement.className = "preview-measure";
+                measureElement.style.top = drawTopY + "px";
+                measureElement.style.width = width + "px";
+                measureElement.style.height = gridHeight + "px";
                 metrics.forEach((column) => {
-                    const fillStyle = getColumnBackground(column);
-                    ctx.fillStyle = fillStyle;
-                    const scaledX = column.x * state.previewZoomX;
-                    const scaledWidth = column.width * state.previewZoomX;
-                    ctx.fillRect(scaledX, drawTopY, scaledWidth, gridHeight);
-                    ctx.strokeStyle = "rgba(120, 120, 120, 0.32)";
-                    ctx.strokeRect(scaledX, drawTopY, scaledWidth, gridHeight);
+                    const cell = document.createElement("div");
+                    cell.className = "preview-cell";
+                    cell.style.left = (column.x * state.previewZoomX) + "px";
+                    cell.style.width = (column.width * state.previewZoomX) + "px";
+                    cell.style.background = getColumnBackground(column);
+                    measureElement.appendChild(cell);
                 });
 
                 for (let slot = 0; slot <= resolution; slot += 1) {
-                    const y = drawTopY + (slot / resolution) * gridHeight;
-                    ctx.strokeStyle = slot % Math.max(1, resolution / 4) === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)";
-                    ctx.beginPath();
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(width, y);
-                    ctx.stroke();
+                    const line = document.createElement("div");
+                    line.className = "preview-grid-line" + (slot % Math.max(1, resolution / 4) === 0 ? " major" : "");
+                    line.style.top = ((slot / resolution) * gridHeight) + "px";
+                    measureElement.appendChild(line);
                 }
 
-                ctx.textAlign = "right";
-                ctx.fillStyle = measure === state.currentMeasure ? "#24d5ff" : "#24d5ff";
-                ctx.font = "bold 14px Consolas";
-                const measureColumn = metrics[0];
-                ctx.fillText("[" + formatMeasure(measure) + "]", (measureColumn.right * state.previewZoomX) - 6, drawTopY + 20);
+                const measureLabel = document.createElement("div");
+                measureLabel.className = "preview-measure-label";
+                measureLabel.textContent = "[" + formatMeasure(measure) + "]";
+                measureElement.appendChild(measureLabel);
+                gridFragment.appendChild(measureElement);
             }
+
+            previewGrid.appendChild(gridFragment);
 
             if (!state.chartModel) {
                 return;
@@ -1783,7 +1847,6 @@
 
             const renderedEvents = [];
             const unmatchedEvents = [];
-            const noteFragment = document.createDocumentFragment();
             state.chartModel.eventMap.forEach((event) => {
                 if (event.measure < renderedMeasures.start || event.measure > renderedMeasures.end) {
                     return;
@@ -1808,13 +1871,7 @@
                         return;
                     }
                     renderedEvents.push({ measure: event.measure, channel: event.channel, token });
-                    ctx.fillStyle = color;
-                    ctx.fillRect(rect.x, drawY, rect.width, rect.height);
-                    ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
-                    ctx.font = "10px Arial";
-                    ctx.textAlign = "center";
                     const label = getEventDisplayLabel(state.chartModel, event.channel, token);
-                    ctx.fillText(label, rect.x + rect.width / 2, drawY + Math.min(rect.height - 3, rect.height / 2 + 3));
 
                     const note = document.createElement("div");
                     note.className = "note-block";
@@ -1838,10 +1895,14 @@
             previewOverlay.appendChild(noteFragment);
 
             if (!renderedEvents.length) {
-                ctx.fillStyle = "#ffb020";
-                ctx.textAlign = "left";
-                ctx.font = "12px Consolas";
-                ctx.fillText("No rendered notes/events from loaded BMS data", 12, Math.max(40, leadIn - 18));
+                const emptyMessage = document.createElement("div");
+                emptyMessage.style.position = "absolute";
+                emptyMessage.style.left = "12px";
+                emptyMessage.style.top = Math.max(40, leadIn - renderTop - 18) + "px";
+                emptyMessage.style.color = "#ffb020";
+                emptyMessage.style.font = "12px Consolas";
+                emptyMessage.textContent = "No rendered notes/events from loaded BMS data";
+                previewOverlay.appendChild(emptyMessage);
             }
 
             renderDebugPanel(state.chartModel, renderedEvents, unmatchedEvents);
@@ -1850,10 +1911,13 @@
             if (selectedColumn) {
                 const rect = getNoteBlockRect(selectedColumn, state.currentMeasure, state.selectedSlot, resolution, height);
                 const drawY = rect.y - renderTop;
-                ctx.strokeStyle = "#22c55e";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(rect.x - 1, drawY - 1, rect.width + 2, rect.height + 2);
-                ctx.lineWidth = 1;
+                const selection = document.createElement("div");
+                selection.className = "preview-selection";
+                selection.style.left = (rect.x - 1) + "px";
+                selection.style.top = (drawY - 1) + "px";
+                selection.style.width = (rect.width + 2) + "px";
+                selection.style.height = (rect.height + 2) + "px";
+                previewOverlay.appendChild(selection);
             }
 
             syncHorizontalScroll("grid");
@@ -2215,13 +2279,16 @@
                 return;
             }
 
-            const targetChannel = hit.column.type === "note" ? hit.column.channel : noteData.channel;
+            const targetChannel = resolveMoveTargetChannel(hit.column, noteData.channel) || noteData.channel;
             if (!targetChannel) {
                 return;
             }
 
             const targetMeasure = state.lockVerticalDrag ? noteData.measure : hit.measure;
-            const targetSlot = state.lockVerticalDrag ? noteData.slot : hit.slot;
+            const targetTokenCount = Math.max(state.guiResolution, state.gridResolution, noteData.tokenCount);
+            const targetSlot = state.lockVerticalDrag
+                ? noteData.slot
+                : remapSlotIndex(hit.slot, state.gridResolution, targetTokenCount);
             const samePosition = targetMeasure === noteData.measure && noteData.channel === targetChannel && targetSlot === noteData.slot;
             if (samePosition) {
                 scheduleRenderPreview();
@@ -2243,9 +2310,9 @@
                 {
                     measure: targetMeasure,
                     channel: targetChannel,
-                    tokenCount: Math.max(state.guiResolution, state.gridResolution, noteData.tokenCount),
+                    tokenCount: targetTokenCount,
                     apply(tokens) {
-                        while (tokens.length < Math.max(state.guiResolution, state.gridResolution)) {
+                        while (tokens.length < targetTokenCount) {
                             tokens.push("00");
                         }
                         tokens[targetSlot] = noteData.token;
@@ -2344,10 +2411,15 @@
             return Math.min(resolution - 1, Math.max(0, Math.floor(ratio * resolution)));
         }
 
-        function getPreviewHit(event) {
-            const rect = previewCanvas.getBoundingClientRect();
-            const x = (event.clientX - rect.left) * (previewCanvas.width / rect.width);
-            const y = state.previewRenderTop + (event.clientY - rect.top) * (previewCanvas.height / rect.height);
+        function remapSlotIndex(slot, fromResolution, toResolution) {
+            const safeFrom = Math.max(1, Number(fromResolution) || 1);
+            const safeTo = Math.max(1, Number(toResolution) || 1);
+            const safeSlot = Math.max(0, Math.min(safeFrom - 1, Number(slot) || 0));
+            const ratio = (safeSlot + 0.5) / safeFrom;
+            return Math.max(0, Math.min(safeTo - 1, Math.round(ratio * safeTo - 0.5)));
+        }
+
+        function getPreviewHitFromPoint(x, y) {
             const measureHeight = state.previewMeasureHeight * state.previewZoomY;
             const layout = getPreviewLayout();
             const columns = layout.metrics;
@@ -2370,9 +2442,14 @@
             return { column, measure, slot };
         }
 
+        function getPreviewHit(event) {
+            const rect = previewStage.getBoundingClientRect();
+            return getPreviewHitFromPoint(event.clientX - rect.left, event.clientY - rect.top);
+        }
+
         function getPreviewColumnHit(event) {
-            const rect = previewCanvas.getBoundingClientRect();
-            const x = (event.clientX - rect.left) * (previewCanvas.width / rect.width);
+            const rect = previewStage.getBoundingClientRect();
+            const x = event.clientX - rect.left;
             const layout = getPreviewLayout();
             const column = layout.metrics.find((entry) => x >= entry.x * state.previewZoomX && x < entry.right * state.previewZoomX);
             if (!column || !column.editable || !column.channel) {
@@ -2399,13 +2476,15 @@
             channelSelect.value = channel;
             updateSlotDisplay();
 
-            setLineForMeasureChannel(measure, channel, Math.max(state.guiResolution, state.gridResolution), (tokens) => {
-                const currentValue = tokens[slot] || "00";
+            const targetTokenCount = Math.max(state.guiResolution, state.gridResolution);
+            const targetSlot = remapSlotIndex(slot, state.gridResolution, targetTokenCount);
+            setLineForMeasureChannel(measure, channel, targetTokenCount, (tokens) => {
+                const currentValue = tokens[targetSlot] || "00";
                 const nextValue = sanitizeObjectValue(objectValueInput.value);
                 if (forceValue !== null) {
-                    tokens[slot] = forceValue;
+                    tokens[targetSlot] = forceValue;
                 } else {
-                    tokens[slot] = currentValue === "00" ? nextValue : "00";
+                    tokens[targetSlot] = currentValue === "00" ? nextValue : "00";
                 }
             });
         }
@@ -2424,7 +2503,20 @@
                 slot: Number(note.dataset.slot),
                 tokenCount: Number(note.dataset.tokenCount),
                 token: String(note.dataset.token),
+                originLeft: parseFloat(note.style.left || 0),
+                originTop: parseFloat(note.style.top || 0),
+                pointerOffsetX: 0,
+                pointerOffsetY: 0,
+                pointerId: event.pointerId,
+                previewHit: null,
             };
+            const noteRect = note.getBoundingClientRect();
+            state.dragNote.pointerOffsetX = event.clientX - noteRect.left;
+            state.dragNote.pointerOffsetY = event.clientY - noteRect.top;
+            if (note.setPointerCapture) {
+                note.setPointerCapture(event.pointerId);
+            }
+            document.body.style.userSelect = "none";
             note.classList.add("dragging");
         }
 
@@ -2433,25 +2525,41 @@
                 return;
             }
 
+            if (event.pointerId !== undefined && state.dragNote.pointerId !== undefined && event.pointerId !== state.dragNote.pointerId) {
+                return;
+            }
+
+            event.preventDefault();
+
             const rect = previewOverlay.getBoundingClientRect();
-            let x = event.clientX - rect.left;
-            let y = event.clientY - rect.top;
+            let targetLeft = event.clientX - rect.left - state.dragNote.pointerOffsetX;
+            let targetTop = event.clientY - rect.top - state.dragNote.pointerOffsetY;
 
             if (state.snapToGrid) {
-                const hit = getPreviewHit(event);
+                const anchorX = targetLeft + state.dragNote.element.offsetWidth * 0.5;
+                const anchorY = targetTop + state.dragNote.element.offsetHeight + 1;
+                const hit = getPreviewHitFromPoint(anchorX, anchorY + state.previewRenderTop);
                 if (hit) {
-                    const noteRect = getNoteBlockRect(hit.column, state.lockVerticalDrag ? state.dragNote.measure : hit.measure, state.lockVerticalDrag ? state.dragNote.slot : hit.slot, state.guiResolution, previewStage.clientHeight);
+                    const previewSlot = state.lockVerticalDrag
+                        ? remapSlotIndex(state.dragNote.slot, state.dragNote.tokenCount, state.gridResolution)
+                        : hit.slot;
+                    const noteRect = getNoteBlockRect(hit.column, state.lockVerticalDrag ? state.dragNote.measure : hit.measure, previewSlot, state.gridResolution, previewStage.clientHeight);
                     noteRect.y -= state.previewRenderTop;
-                    x = noteRect.x + noteRect.width / 2;
-                    y = noteRect.y + noteRect.height / 2;
+                    targetLeft = noteRect.x;
+                    targetTop = noteRect.y;
+                    state.dragNote.previewHit = hit;
+                } else {
+                    state.dragNote.previewHit = null;
                 }
+            } else {
+                state.dragNote.previewHit = null;
             }
 
             if (state.lockVerticalDrag) {
-                y = parseFloat(state.dragNote.element.style.top || 0) + state.dragNote.element.offsetHeight / 2;
+                targetTop = state.dragNote.originTop;
             }
 
-            state.dragNote.element.style.transform = "translate(" + Math.round(x - state.dragNote.element.offsetWidth / 2 - parseFloat(state.dragNote.element.style.left || 0)) + "px, " + Math.round(y - state.dragNote.element.offsetHeight / 2 - parseFloat(state.dragNote.element.style.top || 0)) + "px)";
+            state.dragNote.element.style.transform = "translate(" + Math.round(targetLeft - state.dragNote.originLeft) + "px, " + Math.round(targetTop - state.dragNote.originTop) + "px)";
         }
 
         function handlePreviewPointerUp(event) {
@@ -2459,18 +2567,31 @@
                 return;
             }
 
+            if (event.pointerId !== undefined && state.dragNote.pointerId !== undefined && event.pointerId !== state.dragNote.pointerId) {
+                return;
+            }
+
+            event.preventDefault();
+
             const dragging = state.dragNote;
+            if (dragging.element.releasePointerCapture) {
+                try {
+                    dragging.element.releasePointerCapture(dragging.pointerId);
+                } catch (error) {
+                }
+            }
             dragging.element.classList.remove("dragging");
             dragging.element.style.transform = "";
-            const targetHit = state.lockVerticalDrag ? (() => {
+            const targetHit = state.snapToGrid && dragging.previewHit ? dragging.previewHit : (state.lockVerticalDrag ? (() => {
                 const column = getPreviewColumnHit(event);
                 return column ? { column, measure: dragging.measure, slot: dragging.slot } : null;
-            })() : getPreviewHit(event);
+            })() : getPreviewHit(event));
             if (targetHit) {
                 moveExistingNote(dragging, targetHit);
             } else {
                 scheduleRenderPreview();
             }
+            document.body.style.userSelect = "";
             state.dragNote = null;
         }
 
@@ -2650,10 +2771,10 @@
         lockVerticalCheckbox.addEventListener("change", syncToolState);
         insertLineButton.addEventListener("click", createEmptyLine);
         clearLineButton.addEventListener("click", clearCurrentLine);
-        previewCanvas.addEventListener("dblclick", handlePreviewDoubleClick);
+        previewStage.addEventListener("dblclick", handlePreviewDoubleClick);
         window.addEventListener("pointermove", handlePreviewPointerMove);
         window.addEventListener("pointerup", handlePreviewPointerUp);
-        previewCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
+        previewStage.addEventListener("contextmenu", (event) => event.preventDefault());
         previewOverlay.addEventListener("pointerdown", handleNotePointerDown);
 
         loadText(DEFAULT_TEXT, "untitled.bms", null);
@@ -2663,4 +2784,4 @@
     </script>
 </body>
 
-</html>
+</html> -->
